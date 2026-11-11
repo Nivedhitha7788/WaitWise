@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live OP Waiting Board — WaitWise</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    body {
+      background-color: var(--bg-deep);
+      color: var(--text-light);
+      font-family: var(--font-sans);
+    }
+    .display-header {
+      background: rgba(13, 27, 42, 0.95);
+      padding: 20px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-light);
+      backdrop-filter: blur(10px);
+    }
+    .display-title {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    .display-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 26px;
+      padding: 40px 48px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .room-card-display {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 30px 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .room-card-display:hover {
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+      border-color: var(--accent-orange);
+    }
+    .token-display-box {
+      background: rgba(8, 17, 30, 0.7);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      padding: 24px 16px;
+      text-align: center;
+      margin: 20px 0;
+    }
+    .token-big {
+      font-family: var(--font-serif);
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--accent-orange);
+      text-shadow: 0 0 20px rgba(224, 131, 58, 0.35);
+    }
+    .live-clock {
+      font-family: var(--font-serif);
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 1px;
+    }
+    .tag-live {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 2px;
+    }
+    .tag-live.ready {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .tag-live.busy {
+      background: var(--accent-orange-dim);
+      color: var(--accent-orange);
+      border: 1px solid var(--accent-orange);
+    }
+    .tag-live.away {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Display Bar (Besloor Style) -->
+  <header class="display-header">
+    <div class="display-title">
+      <span style="font-family: var(--font-display); font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: 2px;">
+        WAITWISE<span style="color:var(--accent-orange);">.</span>
+      </span>
+      <span style="font-size: 12px; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 2px; font-weight: 700;">
+        Outpatient Live Waiting Board
+      </span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 24px;">
+      <div class="live-clock" id="liveClock">00:00:00</div>
+      <a href="/" class="btn btn-outline btn-sm">
+        &larr; Exit to Home
+      </a>
+    </div>
+  </header>
+
+  <!-- Emergency Reminder Banner -->
+  <div class="notice-banner" style="margin: 0; border-radius: 0; border-left: none; border-right: none; text-align: center; justify-content: center;">
+    <span>🚨 <strong>Strictly Outpatient (OP) Consultations.</strong> Enter consultation room ONLY when your token number appears below. For emergency care, report directly to the <strong>Hospital Emergency &amp; Trauma Ward</strong>.</span>
+  </div>
+
+  <!-- Main 4-Doctor Rooms Display Grid -->
+  <main class="display-grid" id="displayGrid">
+    <div style="grid-column: 1/-1; text-align: center; padding: 60px; color: var(--text-dim);">
+      Connecting to WaitWise Live Waiting Board...
+    </div>
+  </main>
+
+  <!-- Besloor Footer -->
+  <footer class="besloor-footer">
+    <div>&copy; 2024 WaitWise Hospital Outpatient Queue Management System &bull; Live Queue Broadcast.</div>
+    <div>Auto-refreshes every 5 seconds</div>
+  </footer>
+
+  <script>
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('liveClock').textContent = now.toLocaleTimeString('en-US');
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    async function fetchDisplayData() {
+      try {
+        const res = await fetch('/api/patient/public/display');
+        const data = await res.json();
+        if (!data.success) return;
+
+        const grid = document.getElementById('displayGrid');
+        if (!data.doctors || !data.doctors.length) {
+          grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:50px;color:var(--text-dim);">No doctors registered in system.</div>';
+          return;
+        }
+
+        grid.innerHTML = data.doctors.map((d, index) => {
+          const isUnavail = !d.isAvailable;
+          const hasInRoom = d.currentToken !== null;
+
+          return `
+            <div class="room-card-display" style="${isUnavail ? 'border-color: rgba(239,68,68,0.4);' : ''}">
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                  <span class="tag-live ${isUnavail ? 'away' : hasInRoom ? 'busy' : 'ready'}">
+                    ${isUnavail ? 'AWAY / ROUNDS' : hasInRoom ? 'IN ROOM' : 'READY FOR NEXT'}
+                  </span>
+                  <span style="font-size:11px; color:var(--text-dim); font-weight:700; text-transform:uppercase; letter-spacing:1px;">ROOM 0${index + 1}</span>
+                </div>
+                <h3 style="font-family:var(--font-serif); font-size:22px; font-weight:700; color:#ffffff; margin-bottom:4px;">${d.name}</h3>
+                <div style="font-size:13px; color:var(--accent-orange); font-weight:600;">${d.specialization}</div>
+              </div>
+
+              ${isUnavail ? `
+                <div style="background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 2px; padding: 24px 16px; margin: 24px 0; text-align: center;">
+                  <div style="font-size: 32px; margin-bottom: 8px;">🚪</div>
+                  <div style="font-family:var(--font-serif); font-size: 16px; font-weight: 700; color: #f87171;">Doctor Away From OP Clinic</div>
+                  <div style="font-size: 12.5px; color: #fca5a5; margin-top: 8px; line-height: 1.5;">
+                    ${d.unavailabilityReason || 'Visiting existing patients in ward (In-Patient rounds)'}
+                  </div>
+                </div>
+              ` : `
+                <div class="token-display-box">
+                  <div style="font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--text-muted); font-weight:700;">Now In Consultation</div>
+                  <div class="token-big">${hasInRoom ? `#${d.currentToken}` : '—'}</div>
+                  <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">
+                    ${hasInRoom ? `Slot: <b style="color:var(--text-light);">${d.currentSlot || 'In Progress'}</b>` : 'Consultation room is ready'}
+                  </div>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(8,17,30,0.5); border:1px solid var(--border-light); padding:12px 14px; border-radius:2px; font-size:13px; margin-bottom:20px;">
+                  <span style="color:var(--text-muted); font-weight:600;">Next To Enter:</span>
+                  <b style="color: var(--accent-orange); font-family:var(--font-serif); font-size: 16px;">
+                    ${d.nextToken ? `#${d.nextToken} (${d.nextSlot || ''})` : 'Queue Empty'}
+                  </b>
+                </div>
+              `}
+
+              <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); border-top:1px solid var(--border-light); padding-top:14px;">
+                <span>Waiting: <b style="color:#ffffff;">${d.waitingCount}</b></span>
+                <span>Completed: <b style="color:#34d399;">${d.completedCount}</b></span>
+                <span>Slot: <b style="color:var(--text-light);">${d.consultationTime}m</b></span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error('Display board error:', e);
+      }
+    }
+
+    setInterval(fetchDisplayData, 5000);
+    fetchDisplayData();
+  </script>
+</body>
+</html>

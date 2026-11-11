@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard — WaitWise</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="page">
+    <div class="container">
+
+      <!-- Admin Header (Besloor Style) -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:30px; border-bottom:1px solid var(--border-light); padding-bottom:24px;">
+        <div>
+          <span style="font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--accent-orange); font-weight:700;">HOSPITAL ADMINISTRATION</span>
+          <h1 style="font-size:34px; font-weight:700; color:#ffffff; margin-top:6px;">Queue Administration &amp; Doctors</h1>
+          <div class="orange-bar-left"></div>
+          <p style="font-size:14px; color:var(--text-muted); margin-top:2px;">Overall view of WaitWise outpatient system, doctors &amp; appointments</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline btn-sm" id="seedBtn" title="Ensure database has admin and 4 OP doctors">🌱 Verify System Setup</button>
+          <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 Refresh Dashboard</button>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs (Besloor Orange Style) -->
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="overview">📊 Overall System View</button>
+        <button type="button" class="tab" data-tab="doctors">👨‍⚕️ OP Doctors Management (Max 4)</button>
+        <button type="button" class="tab" data-tab="appointments">📋 All Appointments &amp; Queues</button>
+      </div>
+
+      <!-- TAB 1: OVERVIEW DASHBOARD -->
+      <div id="tab-overview">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card" style="border-left-color: var(--accent-orange);">
+            <div class="stat-icon">👥</div>
+            <div><div class="stat-value" id="s-patients">0</div><div class="stat-label">Total Patients</div></div>
+          </div>
+          <div class="stat-card" style="border-left-color: #10b981;">
+            <div class="stat-icon">👨‍⚕️</div>
+            <div><div class="stat-value" id="s-doctors">0 / 4</div><div class="stat-label">OP Doctors (Max 4)</div></div>
+          </div>
+          <div class="stat-card" style="border-left-color: var(--cyan-glow);">
+            <div class="stat-icon">📅</div>
+            <div><div class="stat-value" id="s-today">0</div><div class="stat-label">Today's Total OP Bookings</div></div>
+          </div>
+          <div class="stat-card" style="border-left-color: #f59e0b;">
+            <div class="stat-icon">⏳</div>
+            <div><div class="stat-value" id="s-waiting">0</div><div class="stat-label">Waiting in Queue</div></div>
+          </div>
+          <div class="stat-card" style="border-left-color: var(--cyan-glow);">
+            <div class="stat-icon">🩺</div>
+            <div><div class="stat-value" id="s-incon">0</div><div class="stat-label">In Consultation Room</div></div>
+          </div>
+          <div class="stat-card" style="border-left-color: #10b981;">
+            <div class="stat-icon">✅</div>
+            <div><div class="stat-value" id="s-done">0</div><div class="stat-label">Completed Consultations</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title" style="margin-bottom:6px;">👨‍⚕️ OP Doctors Live Load &amp; Status</div>
+          <div class="orange-bar-left"></div>
+          <div id="overviewDoctors"><p style="color:#94a3b8; text-align:center; padding:20px 0;">Loading doctors snapshot...</p></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: DOCTORS MANAGEMENT & REGISTER DOCTOR -->
+      <div id="tab-doctors" class="hidden">
+        <div id="docFormAlert"></div>
+
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">OP Hospital Doctors (<span id="docCount">0</span> of 4 slots filled)</h2>
+            <div class="orange-bar-left"></div>
+            <p class="section-subtitle">Only 4 doctors are permitted in the WaitWise hospital system.</p>
+          </div>
+          <button class="btn btn-orange btn-sm" id="toggleDoctorFormBtn">+ Register Doctor</button>
+        </div>
+
+        <div id="maxDoctorWarn" class="alert alert-warn hidden" style="font-weight:600;">
+          ⚠️ Maximum limit of 4 doctors reached. To register another doctor, one existing doctor must be modified or removed.
+        </div>
+
+        <!-- Register Doctor Form (Only accessible to Admin) -->
+        <div id="doctorFormWrap" class="card hidden" style="margin-bottom:28px;">
+          <div class="section-title" style="margin-bottom:6px;">Register New OP Doctor</div>
+          <div class="orange-bar-left"></div>
+          <div id="regDoctorAlert"></div>
+          <form id="regDoctorForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Full Name <span class="req">*</span></label>
+                <input class="form-input" type="text" id="d-name" placeholder="e.g. Dr. Jane Smith" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Email Address <span class="req">*</span></label>
+                <input class="form-input" type="email" id="d-email" placeholder="doctor@waitwise.com" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password <span class="req">*</span></label>
+                <input class="form-input" type="password" id="d-pass" placeholder="Min 6 characters" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">OP Specialization <span class="req">*</span></label>
+                <input class="form-input" type="text" id="d-spec" placeholder="e.g. ENT Specialist (OP)" required />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Consultation Slot Duration (minutes per patient)</label>
+              <input class="form-input" type="number" id="d-time" value="15" min="5" max="60" style="max-width:180px;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Available Days &amp; Consultation Hours</label>
+              <div class="day-chips" id="dayChips"></div>
+              <div id="dayTimeInputs" style="margin-top:10px;"></div>
+            </div>
+            <button type="submit" class="btn btn-orange" id="regDoctorBtn">
+              Register Doctor Into System &rarr;
+            </button>
+          </form>
+        </div>
+
+        <!-- Doctors Table -->
+        <div class="card">
+          <div id="doctorsTableWrap">
+            <p style="color:#94a3b8; text-align:center; padding:20px 0;">Loading doctors directory...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: APPOINTMENTS QUEUE OVERVIEW -->
+      <div id="tab-appointments" class="hidden">
+        <div class="card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">All OP Patient Appointments &amp; Tokens</h2>
+              <div class="orange-bar-left"></div>
+              <p class="section-subtitle">Real-time appointments directory across all 4 doctors</p>
+            </div>
+            <button class="btn btn-outline btn-sm" id="aptRefreshBtn">🔄 Refresh Queue</button>
+          </div>
+          <div id="appointmentsWrap">
+            <p style="color:#94a3b8; text-align:center; padding:20px 0;">Loading appointments...</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer (Besloor Reference) -->
+  <footer class="besloor-footer">
+    <div>&copy; 2024 WaitWise Hospital Queue Management System.</div>
+    <ul class="footer-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/pages/display.html">Queue Board</a></li>
+      <li><a href="/pages/login.html?role=doctor">Doctor Portal</a></li>
+    </ul>
+  </footer>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (!guardPage('admin')) throw new Error('redirect');
+    renderNavbar('navbar');
+
+    const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    let selectedDaySlots = {
+      Monday: { startTime: '09:00', endTime: '13:00' },
+      Tuesday: { startTime: '09:00', endTime: '13:00' },
+      Wednesday: { startTime: '09:00', endTime: '13:00' },
+      Thursday: { startTime: '09:00', endTime: '13:00' },
+      Friday: { startTime: '09:00', endTime: '13:00' },
+      Saturday: { startTime: '09:00', endTime: '13:00' }
+    };
+
+    $$('.tab').forEach(t => {
+      t.onclick = () => {
+        $$('.tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        $$('[id^="tab-"]').forEach(x => x.classList.add('hidden'));
+        $(`#tab-${t.dataset.tab}`).classList.remove('hidden');
+        if (t.dataset.tab === 'doctors') loadDoctors();
+        if (t.dataset.tab === 'appointments') loadAppointments();
+      };
+    });
+
+    function buildDayChips() {
+      const container = $('#dayChips');
+      container.innerHTML = '';
+      DAYS.forEach(day => {
+        const chip = el('button', 'day-chip', day.slice(0,3));
+        chip.type = 'button';
+        chip.dataset.day = day;
+        chip.onclick = () => toggleDay(day);
+        container.appendChild(chip);
+      });
+      renderDayChips();
+      renderDayTimeInputs();
+    }
+
+    function toggleDay(day) {
+      if (selectedDaySlots[day]) {
+        delete selectedDaySlots[day];
+      } else {
+        selectedDaySlots[day] = { startTime: '09:00', endTime: '13:00' };
+      }
+      renderDayChips();
+      renderDayTimeInputs();
+    }
+
+    function renderDayChips() {
+      $$('.day-chip').forEach(chip => {
+        chip.classList.toggle('selected', !!selectedDaySlots[chip.dataset.day]);
+      });
+    }
+
+    function renderDayTimeInputs() {
+      const wrap = $('#dayTimeInputs');
+      wrap.innerHTML = '';
+      Object.entries(selectedDaySlots).forEach(([day, times]) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;background:rgba(0,0,0,0.25);border-radius:2px;padding:8px 12px;flex-wrap:wrap;border:1px solid var(--border-light);';
+        row.innerHTML = `
+          <span style="font-family:var(--font-serif);font-weight:700;color:var(--accent-orange);min-width:85px;font-size:13px">${day}</span>
+          <span style="font-size:13px;color:#94a3b8">From</span>
+          <input class="form-input" type="time" value="${times.startTime}" style="max-width:120px" data-day="${day}" data-field="startTime"/>
+          <span style="font-size:13px;color:#94a3b8">To</span>
+          <input class="form-input" type="time" value="${times.endTime}" style="max-width:120px" data-day="${day}" data-field="endTime"/>
+        `;
+        row.querySelectorAll('input[type=time]').forEach(inp => {
+          inp.onchange = () => { selectedDaySlots[inp.dataset.day][inp.dataset.field] = inp.value; };
+        });
+        wrap.appendChild(row);
+      });
+    }
+
+    buildDayChips();
+
+    $('#toggleDoctorFormBtn').onclick = () => {
+      const wrap = $('#doctorFormWrap');
+      const isHidden = wrap.classList.contains('hidden');
+      wrap.classList.toggle('hidden');
+      $('#toggleDoctorFormBtn').textContent = isHidden ? '✕ Close Form' : '+ Register Doctor';
+    };
+
+    $('#regDoctorForm').onsubmit = async (e) => {
+      e.preventDefault();
+      clearAlert($('#regDoctorAlert'));
+      const btn = $('#regDoctorBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Registering...';
+
+      const availableSlots = Object.entries(selectedDaySlots).map(([day, t]) => ({
+        day, startTime: t.startTime, endTime: t.endTime
+      }));
+
+      try {
+        await api('POST', '/api/admin/register-doctor', {
+          name: $('#d-name').value.trim(),
+          email: $('#d-email').value.trim(),
+          password: $('#d-pass').value,
+          specialization: $('#d-spec').value.trim(),
+          consultationTime: Number($('#d-time').value),
+          availableSlots
+        });
+        showAlert($('#docFormAlert'), 'success', '✅ OP Doctor registered successfully into the system!');
+        $('#doctorFormWrap').classList.add('hidden');
+        $('#toggleDoctorFormBtn').textContent = '+ Register Doctor';
+        $('#regDoctorForm').reset();
+        await loadDoctors();
+        await loadStats();
+      } catch (err) {
+        showAlert($('#regDoctorAlert'), 'error', err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Register Doctor Into System →';
+      }
+    };
+
+    async function loadStats() {
+      try {
+        const { data } = await api('GET', '/api/admin/dashboard');
+        $('#s-patients').textContent = data.totalPatients;
+        $('#s-doctors').textContent  = `${data.totalDoctors} / 4`;
+        $('#s-today').textContent    = data.todayAppointments;
+        $('#s-waiting').textContent  = data.waitingCount;
+        $('#s-incon').textContent    = data.inConsultationCount;
+        $('#s-done').textContent     = data.completedCount;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadDoctors() {
+      try {
+        const { doctors } = await api('GET', '/api/admin/doctors');
+        $('#docCount').textContent = doctors.length;
+
+        const isMax = doctors.length >= 4;
+        $('#maxDoctorWarn').classList.toggle('hidden', !isMax);
+        const toggleBtn = $('#toggleDoctorFormBtn');
+        toggleBtn.disabled = isMax;
+        toggleBtn.style.opacity = isMax ? '0.5' : '1';
+
+        const ov = $('#overviewDoctors');
+        if (!doctors.length) {
+          ov.innerHTML = '<p style="color:#94a3b8; text-align:center; padding:20px 0;">No doctors registered yet.</p>';
+        } else {
+          ov.innerHTML = doctors.map(d => `
+            <div style="background:var(--bg-card); border:1px solid var(--border-light); border-radius:2px; padding:18px 22px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:14px;">
+              <div style="display:flex; align-items:center; gap:16px;">
+                <div style="width:46px; height:46px; background:rgba(255,255,255,0.06); border:1px solid var(--accent-orange); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--accent-orange); font-size:18px;">👨‍⚕️</div>
+                <div>
+                  <div style="font-family:var(--font-serif); font-size:19px; font-weight:700; color:#ffffff;">${d.name}</div>
+                  <div style="font-size:13px; color:var(--text-muted);">${d.specialization} &bull; ${d.consultationTime} min/slot</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:22px; flex-wrap:wrap;">
+                <div style="text-align:center;"><div style="font-family:var(--font-serif); font-size:18px; font-weight:700; color:#ffffff;">${d.todayQueue}</div><div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Today</div></div>
+                <div style="text-align:center;"><div style="font-family:var(--font-serif); font-size:18px; font-weight:700; color:var(--accent-orange);">${d.todayWaiting}</div><div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Waiting</div></div>
+                <div style="text-align:center;"><div style="font-family:var(--font-serif); font-size:18px; font-weight:700; color:var(--cyan-glow);">${d.todayInConsultation || 0}</div><div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">In-Room</div></div>
+                <div style="text-align:center;"><div style="font-family:var(--font-serif); font-size:18px; font-weight:700; color:#10b981;">${d.todayCompleted}</div><div style="font-size:11px; color:#94a3b8; text-transform:uppercase;">Done</div></div>
+                <span class="badge badge-${d.isAvailable ? 'available' : 'unavailable'}">${d.isAvailable ? '● Available' : '● Unavailable'}</span>
+              </div>
+            </div>
+          `).join('');
+        }
+
+        const tw = $('#doctorsTableWrap');
+        if (!doctors.length) {
+          tw.innerHTML = '<p style="color:#94a3b8; text-align:center; padding:30px 0;">No doctors registered.</p>';
+        } else {
+          tw.innerHTML = `
+            <div class="table-wrap">
+              <table>
+                <thead><tr>
+                  <th>Doctor Name</th><th>Specialization</th><th>Consult Time</th>
+                  <th>Today's Queue</th><th>Availability &amp; Ward Status</th><th>Admin Actions</th>
+                </tr></thead>
+                <tbody>${doctors.map(d => `
+                  <tr>
+                    <td><div style="font-family:var(--font-serif); font-weight:700; color:#ffffff; font-size:16px;">${d.name}</div><div style="font-size:12px; color:#64748b;">${d.email}</div></td>
+                    <td><span style="font-weight:600; color:var(--accent-orange);">${d.specialization}</span></td>
+                    <td>${d.consultationTime} min</td>
+                    <td><b>${d.todayQueue}</b> <span style="font-size:12px; color:#64748b;">(${d.todayWaiting} waiting)</span></td>
+                    <td>
+                      <span class="badge badge-${d.isAvailable ? 'available' : 'unavailable'}">${d.isAvailable ? '● Available' : '● Unavailable'}</span>
+                      ${!d.isAvailable && d.unavailabilityReason ? `<div style="font-size:11.5px; color:#f87171; margin-top:4px; font-weight:500;">${d.unavailabilityReason}</div>` : ''}
+                    </td>
+                    <td>
+                      <button class="btn btn-sm ${d.isAvailable ? 'btn-danger' : 'btn-success'}" onclick="toggleAvail('${d._id}', ${d.isAvailable})">
+                        ${d.isAvailable ? 'Mark Unavailable' : 'Mark Available'}
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}</tbody>
+              </table>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function toggleAvail(doctorId, currentAvail) {
+      let reason = '';
+      if (currentAvail) {
+        reason = window.prompt(
+          'Reason for doctor unavailability (e.g. Visiting existing patients in ward (In-Patient rounds)):',
+          'Visiting existing patients in ward (In-Patient rounds)'
+        );
+        if (reason === null) return;
+      }
+      try {
+        await api('PATCH', `/api/admin/doctors/${doctorId}/availability`, {
+          isAvailable: !currentAvail,
+          unavailabilityReason: reason
+        });
+        await loadDoctors();
+        await loadStats();
+      } catch (err) {
+        alert(err.message || 'Failed to update availability.');
+      }
+    }
+
+    async function loadAppointments() {
+      try {
+        const { appointments } = await api('GET', '/api/admin/appointments');
+        const wrap = $('#appointmentsWrap');
+        if (!appointments.length) {
+          wrap.innerHTML = '<p style="color:#94a3b8; text-align:center; padding:30px 0;">No appointments recorded in the system yet.</p>';
+          return;
+        }
+        wrap.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Token</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Slot</th><th>Status</th><th>Wait / Completed</th>
+              </tr></thead>
+              <tbody>${appointments.map(a => `
+                <tr>
+                  <td><div style="width:38px; height:38px; background:rgba(255,255,255,0.06); border:1px solid var(--accent-orange); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--accent-orange); font-family:var(--font-serif); font-weight:700; font-size:16px;">#${a.tokenNumber}</div></td>
+                  <td><div style="font-weight:700; color:#ffffff;">${a.patient?.name || 'Patient'}</div><div style="font-size:12px; color:#64748b;">${a.patient?.phone || a.patient?.email || ''}</div></td>
+                  <td><div style="font-family:var(--font-serif); font-weight:700;">${a.doctor?.name || 'Doctor'}</div><div style="font-size:12px; color:var(--accent-orange);">${a.doctor?.specialization || ''}</div></td>
+                  <td>${fmtDate(a.appointmentDate)}</td>
+                  <td><b>${a.slot}</b></td>
+                  <td>${statusBadge(a.status)}</td>
+                  <td><span style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}` : a.status === 'waiting' ? `Est. ${a.estimatedWaitTime} min` : 'Active'}</span></td>
+                </tr>
+              `).join('')}</tbody>
+            </table>
+          </div>
+        `;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    $('#seedBtn').onclick = async () => {
+      try {
+        const res = await api('GET', '/api/admin/seed');
+        alert(res.message);
+        loadStats();
+        loadDoctors();
+        loadAppointments();
+      } catch (e) {
+        alert('Seed error: ' + e.message);
+      }
+    };
+
+    $('#refreshBtn').onclick = () => { loadStats(); loadDoctors(); loadAppointments(); };
+    $('#aptRefreshBtn').onclick = loadAppointments;
+
+    loadStats();
+    loadDoctors();
+    loadAppointments();
+  </script>
+</body>
+</html>

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WaitWise — Hospital OP Queue Management System</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- Main Transparent / Cinematic Navbar (Besloor Style) -->
+  <header class="navbar">
+    <a class="nav-brand" href="index.html">
+      <span class="nav-brand-title">WAITWISE</span>
+      <span class="nav-brand-sub">HOSPITAL QUEUE MANAGEMENT</span>
+    </a>
+
+    <nav>
+      <ul class="nav-links">
+        <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="#specialists">OP Doctors</a></li>
+        <li><a href="pages/display.html">Live Board</a></li>
+      </ul>
+    </nav>
+
+    <!-- Single Unified Register / Login Button -->
+    <div class="nav-right">
+      <button type="button" class="btn btn-orange btn-sm" onclick="openAuthModal()">
+        Register / Login
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero Section with Attached Stethoscope Background Image (Besloor Style) -->
+  <section class="besloor-hero">
+    <div class="besloor-hero-kicker">
+      OUTPATIENT (OP) ZERO-CONTACT QUEUE
+    </div>
+
+    <!-- Centered Serif Headline (Matching "Vestibulum Metus Semper") -->
+    <h1 class="besloor-hero-title">
+      Care Without The Waiting Room
+    </h1>
+
+    <!-- Orange Horizontal Accent Divider (Matching Reference) -->
+    <div class="orange-bar"></div>
+
+    <!-- Centered Subtitle Paragraph (Matching Reference) -->
+    <p class="besloor-hero-desc">
+      Reserve your Outpatient consultation slot digitally. Track your token live from home and enter hospital grounds only when your turn arrives.
+    </p>
+
+    <!-- Single Register / Login Action Button -->
+    <div class="besloor-hero-btns">
+      <button type="button" class="btn btn-orange" onclick="openAuthModal()" style="padding: 15px 40px; font-size: 13px;">
+        Register / Login &rarr;
+      </button>
+      <a href="pages/display.html" class="btn btn-outline" style="padding: 15px 30px; font-size: 13px;">
+        📊 Live Queue Board
+      </a>
+    </div>
+  </section>
+
+  <!-- Emergency / OP Policy Warning Strip -->
+  <div class="notice-banner" style="margin: 0; border-radius: 0; border-left: none; border-right: none; justify-content: center; background: rgba(8, 17, 30, 0.98);">
+    <span>🚨 <strong>Strictly Outpatient (OP) Consultations.</strong> WaitWise manages scheduled OP queues without waiting room entry. For trauma or emergency care, proceed directly to the <strong>Hospital Emergency &amp; Trauma Ward</strong>.</span>
+  </div>
+
+  <!-- Featured 4 OP Doctors Section -->
+  <section class="container" id="specialists">
+    <div class="section-header" style="justify-content: center; text-align: center; flex-direction: column; align-items: center;">
+      <h2 class="section-title">The 4 OP Specialist Doctors</h2>
+      <div class="orange-bar" style="margin: 10px auto 14px;"></div>
+      <p class="section-subtitle">Dedicated outpatient clinics connected to real-time hospital queues</p>
+    </div>
+
+    <!-- 4 Cinematic Doctor Cards Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px;">
+
+      <!-- Doctor 1: Dr. Rajesh Sharma -->
+      <article class="doctor-cinematic-card">
+        <div>
+          <div class="doc-card-header">
+            <span class="doc-room-tag">OP Room 01</span>
+            <span class="badge badge-available">● Available</span>
+          </div>
+          <div class="doc-card-body">
+            <div style="font-size: 32px; margin-bottom: 12px;">🩺</div>
+            <h3 class="doc-card-title">Dr. Rajesh Sharma</h3>
+            <div class="doc-card-spec">General Medicine (OP)</div>
+            <div class="orange-bar-left"></div>
+            <p class="doc-card-text">
+              Primary adult outpatient care, internal diagnosis, and acute consultations. 15-minute dedicated slots.
+            </p>
+          </div>
+        </div>
+        <div class="doc-card-footer">
+          <a href="pages/login.html?role=patient" style="font-size: 11px; font-weight: 700; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 1px;">
+            Book OP Slot &rarr;
+          </a>
+          <a href="pages/login.html?role=doctor" style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+            Doctor Portal &rarr;
+          </a>
+        </div>
+      </article>
+
+      <!-- Doctor 2: Dr. Priya Patel -->
+      <article class="doctor-cinematic-card">
+        <div>
+          <div class="doc-card-header">
+            <span class="doc-room-tag">OP Room 02</span>
+            <span class="badge badge-available">● Available</span>
+          </div>
+          <div class="doc-card-body">
+            <div style="font-size: 32px; margin-bottom: 12px;">🧸</div>
+            <h3 class="doc-card-title">Dr. Priya Patel</h3>
+            <div class="doc-card-spec">Pediatrics (OP)</div>
+            <div class="orange-bar-left"></div>
+            <p class="doc-card-text">
+              Specialized child healthcare, infant wellness reviews, and adolescent pediatric consultations. 15-minute slots.
+            </p>
+          </div>
+        </div>
+        <div class="doc-card-footer">
+          <a href="pages/login.html?role=patient" style="font-size: 11px; font-weight: 700; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 1px;">
+            Book OP Slot &rarr;
+          </a>
+          <a href="pages/login.html?role=doctor" style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+            Doctor Portal &rarr;
+          </a>
+        </div>
+      </article>
+
+      <!-- Doctor 3: Dr. Anita Desai (Unavailable: Visiting Ward) -->
+      <article class="doctor-cinematic-card is-unavail">
+        <div>
+          <div class="doc-card-header">
+            <span class="doc-room-tag" style="color: #ef4444;">OP Room 03</span>
+            <span class="badge badge-unavailable">● In Ward Rounds</span>
+          </div>
+          <div class="doc-card-body">
+            <div style="font-size: 32px; margin-bottom: 12px;">🔬</div>
+            <h3 class="doc-card-title">Dr. Anita Desai</h3>
+            <div class="doc-card-spec" style="color: #f87171;">Dermatology (OP)</div>
+            <div class="orange-bar-left" style="background: #ef4444;"></div>
+            <p class="doc-card-text">
+              Clinical skin consultation, dermatological diagnosis, and treatment. 20-minute comprehensive appointment slots.
+            </p>
+            <div style="background: rgba(239, 68, 68, 0.15); border-left: 2px solid #ef4444; padding: 10px 14px; font-size: 12px; color: #fca5a5;">
+              <b>Status Notice:</b> Doctor is currently visiting existing in-patients in the ward (Rounds).
+            </div>
+          </div>
+        </div>
+        <div class="doc-card-footer">
+          <a href="pages/login.html?role=patient" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+            View Slots &rarr;
+          </a>
+          <a href="pages/login.html?role=doctor" style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+            Doctor Portal &rarr;
+          </a>
+        </div>
+      </article>
+
+      <!-- Doctor 4: Dr. Vikram Rao -->
+      <article class="doctor-cinematic-card">
+        <div>
+          <div class="doc-card-header">
+            <span class="doc-room-tag">OP Room 04</span>
+            <span class="badge badge-available">● Available</span>
+          </div>
+          <div class="doc-card-body">
+            <div style="font-size: 32px; margin-bottom: 12px;">🦴</div>
+            <h3 class="doc-card-title">Dr. Vikram Rao</h3>
+            <div class="doc-card-spec">Orthopedics (OP)</div>
+            <div class="orange-bar-left"></div>
+            <p class="doc-card-text">
+              Musculoskeletal health, joint consultations, and outpatient post-injury rehabilitation reviews. 15-minute slots.
+            </p>
+          </div>
+        </div>
+        <div class="doc-card-footer">
+          <a href="pages/login.html?role=patient" style="font-size: 11px; font-weight: 700; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 1px;">
+            Book OP Slot &rarr;
+          </a>
+          <a href="pages/login.html?role=doctor" style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">
+            Doctor Portal &rarr;
+          </a>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- Role Division Modal (Patient, Doctor, Admin) -->
+  <div class="modal-overlay hidden" id="authSelectModal">
+    <div class="modal modal-lg">
+      <button type="button" class="modal-close" onclick="closeAuthModal()" aria-label="Close dialog">&times;</button>
+      
+      <div class="text-center" style="margin-bottom: 24px;">
+        <span style="font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 700; color: var(--accent-orange);">PORTAL ACCESS</span>
+        <h2 class="serif-heading" style="font-size: 28px; margin-top: 6px;">Register or Sign In</h2>
+        <div class="orange-bar"></div>
+        <p style="font-size: 13.5px; color: var(--text-muted);">Please select your role to access WaitWise</p>
+      </div>
+
+      <!-- Divided Roles Grid: Patient, Doctor, Admin -->
+      <div class="role-division-grid">
+
+        <!-- 1. Patient -->
+        <div class="role-division-card">
+          <div>
+            <div class="role-card-badge">Patient</div>
+            <div class="role-icon">🧑‍⚕️</div>
+            <h3 class="role-title">Patient Portal</h3>
+            <p class="role-desc">
+              Book consultation slots with our 4 OP doctors, generate your digital token, and track live queue progress from home.
+            </p>
+          </div>
+          <div class="role-actions">
+            <a href="pages/login.html?role=patient" class="btn btn-orange btn-block btn-sm">
+              Patient Sign In &rarr;
+            </a>
+            <a href="pages/register.html" class="btn btn-outline btn-block btn-sm">
+              Register as Patient &rarr;
+            </a>
+          </div>
+        </div>
+
+        <!-- 2. Doctor -->
+        <div class="role-division-card">
+          <div>
+            <div class="role-card-badge">OP Doctor</div>
+            <div class="role-icon">👨‍⚕️</div>
+            <h3 class="role-title">Doctor Portal</h3>
+            <p class="role-desc">
+              Direct login for registered OP specialists. Call in patients, record consultations, and toggle availability during ward rounds.
+            </p>
+          </div>
+          <div class="role-actions">
+            <a href="pages/login.html?role=doctor" class="btn btn-orange btn-block btn-sm">
+              Doctor Sign In &rarr;
+            </a>
+            <div style="font-size: 11px; color: var(--text-dim); text-align: center; margin-top: 6px;">
+              Doctor registration is managed by Hospital Admin
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Admin -->
+        <div class="role-division-card">
+          <div>
+            <div class="role-card-badge">Hospital Admin</div>
+            <div class="role-icon">🔧</div>
+            <h3 class="role-title">Admin Dashboard</h3>
+            <p class="role-desc">
+              Hospital administration dashboard, overall real-time queue overview, and doctor management (strictly 4 doctors).
+            </p>
+          </div>
+          <div class="role-actions">
+            <a href="pages/login.html?role=admin" class="btn btn-outline-orange btn-block btn-sm">
+              Admin Sign In &rarr;
+            </a>
+            <div style="font-size: 11px; color: var(--text-dim); text-align: center; margin-top: 6px;">
+              Authorized hospital personnel only
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer (Besloor Reference) -->
+  <footer class="besloor-footer">
+    <div>
+      <div style="font-family: var(--font-display); font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: 2px;">
+        WAITWISE
+      </div>
+      <div style="margin-top: 4px;">&copy; 2024 WaitWise Hospital Queue Management System. All rights reserved.</div>
+    </div>
+    <ul class="footer-links">
+      <li><a href="#" onclick="openAuthModal(); return false;">Register / Login</a></li>
+      <li><a href="pages/display.html">Live Display Board</a></li>
+      <li><a href="#specialists">Specialist Doctors</a></li>
+    </ul>
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script>
+    if (Auth.isAuth && Auth.role) {
+      const map = { admin: '/pages/admin.html', doctor: '/pages/doctor.html', patient: '/pages/patient.html' };
+      window.location.href = map[Auth.role] || '/';
+    }
+
+    const modal = document.getElementById('authSelectModal');
+
+    function openAuthModal() {
+      if (modal) {
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function closeAuthModal() {
+      if (modal) {
+        modal.classList.add('hidden');
+        document.body.style.overflow = '';
+      }
+    }
+
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeAuthModal();
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAuthModal();
+    });
+  </script>
+</body>
+</html>

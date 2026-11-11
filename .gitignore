@@ -1,0 +1,26 @@
+# Node modules
+node_modules/
+backend/node_modules/
+
+# Environment files
+.env
+backend/.env
+
+# Local database / data files (auto-generated)
+backend/data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Build output
+dist/
+

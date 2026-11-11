@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doctor OP Portal — WaitWise</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="page">
+    <div class="container">
+
+      <!-- Doctor Header (Besloor Style) -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; margin-bottom:28px; border-bottom:1px solid var(--border-light); padding-bottom:24px;">
+        <div>
+          <span style="font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--accent-orange); font-weight:700;">DOCTOR CLINICAL PORTAL</span>
+          <h1 style="font-size:34px; font-weight:700; color:#ffffff; margin-top:6px;" id="docName">Doctor OP Portal</h1>
+          <div class="orange-bar-left"></div>
+          <p style="font-size:14px; color:var(--text-muted); margin-top:2px;" id="docSpec">Loading specialization...</p>
+          <p style="font-size:12px; color:var(--text-dim); margin-top:2px;" id="todayDate"></p>
+        </div>
+        <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 Refresh OP Queue</button>
+      </div>
+
+      <!-- OP Policy / Emergency Reminder -->
+      <div class="notice-banner">
+        🚨 <strong>OP Consultations Strictly.</strong> Do NOT accept emergency consultations in this digital queue. Direct emergency cases immediately to the <strong>Hospital Emergency &amp; Trauma Ward</strong>.
+      </div>
+
+      <!-- Availability & Ward Visit Status Card -->
+      <div class="card" style="border-left: 3px solid var(--accent-orange);">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;">
+          <div>
+            <div style="font-family:var(--font-serif); font-size:18px; font-weight:700; color:#ffffff;">OP Consultation Availability</div>
+            <div style="font-size:13.5px; font-weight:600; margin-top:4px;" id="availStatus">Checking status...</div>
+            <div style="font-size:12.5px; color:#f87171; margin-top:3px; font-weight:500;" id="unavailReason"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div id="reasonInputWrap" style="display:none; display:flex; gap:8px; flex-wrap:wrap;">
+              <select class="form-select" id="reasonPreset" style="font-size:12px; max-width:280px;">
+                <option value="Visiting existing patients in ward (In-Patient rounds)">Visiting existing patients in ward (In-Patient rounds)</option>
+                <option value="Emergency ward consultation call">Emergency ward consultation call</option>
+                <option value="Hospital clinical review meeting">Hospital clinical review meeting</option>
+                <option value="custom">Other reason...</option>
+              </select>
+              <input class="form-input" type="text" id="customReason" placeholder="Custom reason" style="display:none; max-width:200px; font-size:12px;" />
+            </div>
+            <button class="btn btn-sm" id="availToggleBtn">Loading...</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Queue Statistics Cards -->
+      <div class="stats-grid">
+        <div class="stat-card" style="border-left-color: var(--accent-orange);">
+          <div class="stat-icon">⏳</div>
+          <div><div class="stat-value" id="q-waiting">0</div><div class="stat-label">Waiting in Queue</div></div>
+        </div>
+        <div class="stat-card" style="border-left-color: var(--cyan-glow);">
+          <div class="stat-icon">🩺</div>
+          <div><div class="stat-value" id="q-incon">0</div><div class="stat-label">In Consultation Room</div></div>
+        </div>
+        <div class="stat-card" style="border-left-color: #10b981;">
+          <div class="stat-icon">✅</div>
+          <div><div class="stat-value" id="q-done">0</div><div class="stat-label">Consultations Done</div></div>
+        </div>
+        <div class="stat-card" style="border-left-color: #94a3b8;">
+          <div class="stat-icon">📋</div>
+          <div><div class="stat-value" id="q-total">0</div><div class="stat-label">Total OP Bookings</div></div>
+        </div>
+      </div>
+
+      <!-- Active Consultation In-Progress Box -->
+      <div id="activeConsultationCard" class="card hidden" style="border: 1.5px solid #38bdf8; background: rgba(14, 28, 48, 0.95);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <div style="font-family:var(--font-serif); font-size:20px; font-weight:700; color:#38bdf8;">
+            🩺 Patient Currently Inside Consultation Room
+          </div>
+          <span class="badge badge-in-consultation">In Consultation</span>
+        </div>
+        <div id="activeConsultationDetails" style="margin-bottom:16px;"></div>
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Doctor's Consultation Notes / Prescription (Optional)</label>
+          <input class="form-input" type="text" id="consultationNotes" placeholder="e.g. Prescribed medication, routine review in 5 days" />
+        </div>
+        <button class="btn btn-success" id="finishActiveBtn" style="padding: 12px 28px;">
+          ✅ Complete Consultation &amp; Advance Queue
+        </button>
+      </div>
+
+      <!-- Live Queue Section -->
+      <div class="card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">Today's Patient Queue &amp; Consultations</h2>
+            <div class="orange-bar-left"></div>
+            <p class="section-subtitle">Queue advances automatically for waiting patients when you finish past consultations.</p>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;" id="queueFilterGroup">
+            <button type="button" class="btn btn-orange btn-sm" data-filter="all" id="filter-all">All (<span id="count-all">0</span>)</button>
+            <button type="button" class="btn btn-outline btn-sm" data-filter="waiting" id="filter-waiting">Waiting (<span id="count-waiting">0</span>)</button>
+            <button type="button" class="btn btn-outline btn-sm" data-filter="in-consultation" id="filter-incon">In-Room (<span id="count-incon">0</span>)</button>
+            <button type="button" class="btn btn-outline btn-sm" data-filter="completed" id="filter-completed">Past Consultations (<span id="count-completed">0</span>)</button>
+          </div>
+          <div id="alertBox" style="width:100%; margin-top:10px;"></div>
+        </div>
+        <div id="queueList">
+          <p style="color:#94a3b8; text-align:center; padding:30px 0;">Loading OP queue...</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer (Besloor Reference) -->
+  <footer class="besloor-footer">
+    <div>&copy; 2024 WaitWise Hospital Queue Management System.</div>
+    <ul class="footer-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/pages/display.html">Queue Board</a></li>
+      <li><a href="/pages/login.html?role=patient">Patient Sign In</a></li>
+    </ul>
+  </footer>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (!guardPage('doctor')) throw new Error('redirect');
+    renderNavbar('navbar');
+
+    $('#todayDate').textContent = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    let doctorProfile = null;
+    let isAvailable = true;
+    let currentInConsultationApt = null;
+    let currentFilter = 'all';
+    let cachedAppointments = [];
+
+    $$('#queueFilterGroup button').forEach(btn => {
+      btn.onclick = () => {
+        $$('#queueFilterGroup button').forEach(b => {
+          b.className = 'btn btn-outline btn-sm';
+        });
+        btn.className = 'btn btn-orange btn-sm';
+        currentFilter = btn.dataset.filter;
+        renderFilteredQueue();
+      };
+    });
+
+    function renderFilteredQueue() {
+      const list = $('#queueList');
+      let filtered = cachedAppointments;
+      if (currentFilter !== 'all') {
+        filtered = cachedAppointments.filter(a => a.status === currentFilter);
+      }
+
+      if (!filtered.length) {
+        list.innerHTML = `<p style="color:#94a3b8; text-align:center; padding:30px 0;">No appointments found in '${currentFilter}' status.</p>`;
+        return;
+      }
+
+      list.innerHTML = filtered.map(a => {
+        const p = a.patient || {};
+        let actions = '';
+        if (a.status === 'waiting') {
+          actions = `
+            <button class="btn btn-sm btn-dark" onclick="updateStatus('${a._id}','in-consultation')">
+              🩺 Call In Room
+            </button>
+            <button class="btn btn-sm btn-danger" onclick="updateStatus('${a._id}','cancelled')">
+              ✕ No Show
+            </button>
+          `;
+        } else if (a.status === 'in-consultation') {
+          actions = `<button class="btn btn-sm btn-success" onclick="completeApt('${a._id}')">✅ Complete</button>`;
+        } else if (a.status === 'completed') {
+          actions = `<span style="font-size:12px; color:#10b981; font-weight:700;">✓ Done at ${a.completedAt ? new Date(a.completedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Today'}</span>`;
+        }
+
+        return `
+          <div class="queue-item" style="border-left: 3px solid ${a.status === 'in-consultation' ? 'var(--cyan-glow)' : a.status === 'completed' ? '#10b981' : a.status === 'waiting' ? 'var(--accent-orange)' : 'var(--border-light)'}">
+            <div style="display:flex; align-items:center; gap:16px; min-width:0;">
+              <div class="token-circle">
+                #${a.tokenNumber}
+              </div>
+              <div>
+                <div style="font-family:var(--font-serif); font-weight:700; color:#ffffff; font-size:18px;">${p.name || 'Patient'}</div>
+                <div style="font-size:13px; color:var(--text-muted);">
+                  Slot: <b style="color:#fff;">${a.slot}</b> &bull; ${p.phone ? `Phone: ${p.phone}` : ''} ${p.age ? `(${p.age} yrs, ${p.gender || ''})` : ''}
+                </div>
+                ${a.notes ? `<div style="font-size:12px; color:var(--accent-orange); margin-top:2px;"><b>Clinical Notes:</b> ${a.notes}</div>` : ''}
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              ${statusBadge(a.status)}
+              <div style="display:flex; gap:8px;">${actions}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadProfile() {
+      try {
+        const { doctor } = await api('GET', '/api/doctor/profile');
+        doctorProfile = doctor;
+        isAvailable = doctor.isAvailable;
+        $('#docName').textContent = doctor.name;
+        $('#docSpec').textContent = `${doctor.specialization} &bull; ${doctor.consultationTime} min consultation slot duration`;
+        updateAvailUI();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function updateAvailUI() {
+      const btn = $('#availToggleBtn');
+      const status = $('#availStatus');
+      const reasonWrap = $('#reasonInputWrap');
+      const reasonDisplay = $('#unavailReason');
+
+      if (isAvailable) {
+        status.textContent = '● Available for OP Consultations';
+        status.style.color = '#10b981';
+        btn.textContent = 'Mark Unavailable';
+        btn.className = 'btn btn-sm btn-danger';
+        reasonWrap.style.display = 'none';
+        reasonDisplay.textContent = '';
+      } else {
+        status.textContent = '● Unavailable for OP Consultations';
+        status.style.color = '#ef4444';
+        btn.textContent = 'Mark Available';
+        btn.className = 'btn btn-sm btn-success';
+        reasonWrap.style.display = 'flex';
+        const r = doctorProfile?.unavailabilityReason || 'Visiting existing patients in ward (In-Patient rounds)';
+        reasonDisplay.textContent = `Reason: ${r}`;
+      }
+    }
+
+    $('#reasonPreset').onchange = () => {
+      const isCustom = $('#reasonPreset').value === 'custom';
+      $('#customReason').style.display = isCustom ? 'block' : 'none';
+    };
+
+    $('#availToggleBtn').onclick = async () => {
+      const btn = $('#availToggleBtn');
+      btn.disabled = true;
+      try {
+        const newAvail = !isAvailable;
+        let reason = '';
+        if (!newAvail) {
+          const preset = $('#reasonPreset').value;
+          reason = preset === 'custom' ? ($('#customReason').value.trim() || 'Visiting existing patients in ward') : preset;
+        }
+
+        const res = await api('PATCH', '/api/doctor/availability', {
+          isAvailable: newAvail,
+          unavailabilityReason: reason
+        });
+        isAvailable = res.isAvailable;
+        if (doctorProfile) {
+          doctorProfile.isAvailable = res.isAvailable;
+          doctorProfile.unavailabilityReason = res.unavailabilityReason;
+        }
+        updateAvailUI();
+        showAlert($('#alertBox'), 'success', res.message);
+      } catch (err) {
+        showAlert($('#alertBox'), 'error', err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    async function loadQueue() {
+      try {
+        const { appointments, stats } = await api('GET', '/api/doctor/queue');
+        cachedAppointments = appointments;
+
+        $('#q-waiting').textContent = stats.waitingCount;
+        $('#q-incon').textContent = stats.inConsultationCount;
+        $('#q-done').textContent = stats.completedCount;
+        $('#q-total').textContent = stats.total;
+
+        $('#count-all').textContent = stats.total;
+        $('#count-waiting').textContent = stats.waitingCount;
+        $('#count-incon').textContent = stats.inConsultationCount;
+        $('#count-completed').textContent = stats.completedCount;
+
+        const inConsultation = appointments.find(a => a.status === 'in-consultation');
+        currentInConsultationApt = inConsultation || null;
+
+        const activeCard = $('#activeConsultationCard');
+        if (inConsultation) {
+          activeCard.classList.remove('hidden');
+          const p = inConsultation.patient || {};
+          $('#activeConsultationDetails').innerHTML = `
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div style="width:48px; height:48px; background:rgba(255,255,255,0.06); border:1px solid var(--accent-orange); border-radius:2px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--accent-orange); font-weight:700;">
+                <span style="font-size:9px; letter-spacing:1px;">TOKEN</span>
+                <span style="font-family:var(--font-serif); font-size:18px;">#${inConsultation.tokenNumber}</span>
+              </div>
+              <div>
+                <div style="font-family:var(--font-serif); font-size:19px; font-weight:700; color:#ffffff;">${p.name || 'Patient'}</div>
+                <div style="font-size:13px; color:var(--text-muted);">Slot: <b style="color:#fff;">${inConsultation.slot}</b> &bull; ${p.gender || ''} ${p.age ? `(${p.age} yrs)` : ''} ${p.phone ? `&bull; 📞 ${p.phone}` : ''}</div>
+              </div>
+            </div>
+          `;
+        } else {
+          activeCard.classList.add('hidden');
+        }
+
+        renderFilteredQueue();
+      } catch (err) {
+        console.error(err);
+        showAlert($('#alertBox'), 'error', 'Failed to load OP queue.');
+      }
+    }
+
+    async function updateStatus(id, status) {
+      clearAlert($('#alertBox'));
+      try {
+        await api('PATCH', `/api/doctor/appointments/${id}/status`, { status });
+        await loadQueue();
+      } catch (err) {
+        showAlert($('#alertBox'), 'error', err.message);
+      }
+    }
+
+    async function completeApt(id, notes = '') {
+      clearAlert($('#alertBox'));
+      try {
+        await api('PATCH', `/api/doctor/appointments/${id}/complete`, { notes });
+        $('#consultationNotes').value = '';
+        await loadQueue();
+      } catch (err) {
+        showAlert($('#alertBox'), 'error', err.message);
+      }
+    }
+
+    $('#finishActiveBtn').onclick = () => {
+      if (currentInConsultationApt) {
+        const notes = $('#consultationNotes').value.trim();
+        completeApt(currentInConsultationApt._id, notes);
+      }
+    };
+
+    $('#refreshBtn').onclick = () => {
+      loadProfile();
+      loadQueue();
+    };
+
+    setInterval(loadQueue, 15000);
+
+    loadProfile();
+    loadQueue();
+  </script>
+</body>
+</html>

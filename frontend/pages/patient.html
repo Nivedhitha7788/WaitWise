@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient OP Portal — WaitWise</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="page">
+    <div class="container">
+
+      <!-- Patient Header (Besloor Style) -->
+      <div style="margin-bottom:30px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px; border-bottom:1px solid var(--border-light); padding-bottom:24px;">
+        <div>
+          <span style="font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--accent-orange); font-weight:700;">PATIENT CLINICAL PORTAL</span>
+          <h1 style="font-size:34px; font-weight:700; color:#ffffff; margin-top:6px;">Outpatient Queue &amp; Tokens</h1>
+          <div class="orange-bar-left"></div>
+          <p style="font-size:14px; color:var(--text-muted); margin-top:2px;" id="patientGreeting">
+            Welcome to WaitWise &bull; Arrive only when your digital token is called
+          </p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline-orange btn-sm" id="enableNotifyBtn">
+            🔔 Enable Turn Audio Alerts
+          </button>
+        </div>
+      </div>
+
+      <!-- OP Policy / Emergency Warning Banner -->
+      <div class="notice-banner">
+        🏥 <strong>Strictly Outpatient (OP) Consultations.</strong> Physical hospital presence is required <b>ONLY when your token is called</b>. For trauma or emergency care, proceed to the <strong>Hospital Emergency Ward</strong>.
+      </div>
+
+      <!-- Turn Alert Notification Banner (Hidden until turn arrives) -->
+      <div id="turnAlertBanner" class="alert alert-success hidden" style="font-size:16px; font-weight:700; text-align:center; padding:18px; margin-bottom:26px; border:2px solid #10b981; animation: pulse 1.5s infinite;">
+        🔔 YOUR TURN HAS ARRIVED! Please enter the Doctor's OP Consultation Room immediately.
+      </div>
+
+      <!-- Navigation Tabs (Besloor Orange Style) -->
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="book">📅 Book OP Consultation Slot</button>
+        <button type="button" class="tab" data-tab="myapts">🎟️ My Tokens &amp; Live Tracking</button>
+      </div>
+
+      <!-- TAB 1: BOOK CONSULTATION -->
+      <div id="tab-book">
+        <div class="card">
+          <div class="section-title" style="margin-bottom:6px;">Reserve OP Consultation &amp; Generate Token</div>
+          <div class="orange-bar-left"></div>
+          <div id="bookAlert"></div>
+          <form id="bookForm">
+            <div class="form-group">
+              <label class="form-label">Select OP Specialist Doctor <span class="req">*</span></label>
+              <select class="form-select" id="doctorSelect">
+                <option value="">Loading doctors from hospital database...</option>
+              </select>
+            </div>
+
+            <!-- Doctor availability preview -->
+            <div id="doctorInfo" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:2px; padding:14px 18px; margin-bottom:20px; font-size:13.5px;"></div>
+
+            <div class="form-group">
+              <label class="form-label">Select Consultation Date <span class="req">*</span></label>
+              <input class="form-input" type="date" id="dateInput" style="max-width:240px;" />
+            </div>
+
+            <div class="form-group" id="slotsSection" style="display:none;">
+              <label class="form-label">Available Time Slots <span class="req">*</span></label>
+              <div id="slotsWrap" style="display:flex; gap:10px; flex-wrap:wrap; min-height:40px; margin-top:10px;">
+                <p style="color:#94a3b8; font-size:13px;">Select a date to display available OP slots.</p>
+              </div>
+              <input type="hidden" id="selectedSlot" />
+            </div>
+
+            <button type="submit" class="btn btn-orange" id="bookBtn" disabled style="margin-top:14px; font-size:13px; padding:13px 32px;">
+              🎟️ Generate OP Digital Token &rarr;
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- TAB 2: MY TOKENS & LIVE FREQUENT TRACKING -->
+      <div id="tab-myapts" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+          <div>
+            <h2 style="font-family:var(--font-serif); font-size:24px; color:#ffffff;">Your Booked OP Tokens</h2>
+            <div class="orange-bar-left"></div>
+            <p style="font-size:13px; color:var(--text-muted);">Queue positions advance automatically as doctors finish past consultations.</p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="refreshAptsBtn">🔄 Refresh Tokens</button>
+        </div>
+        <div id="aptsList"><p style="color:#94a3b8; text-align:center; padding:30px 0;">Loading tokens...</p></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Real-Time Token Tracker Modal (Besloor Style) -->
+  <div id="tokenModal" class="modal-overlay hidden">
+    <div class="modal">
+      <button class="modal-close" id="modalClose">✕</button>
+      <div id="tokenContent"><p style="text-align:center; padding:24px 0; color:#94a3b8;">Loading token live status...</p></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-light); padding-top:18px; margin-top:20px;">
+        <span id="countdownLabel" style="font-size:12px; font-weight:600; color:var(--text-muted);">Tracking: refresh in 10s</span>
+        <button class="btn btn-orange btn-sm" id="refreshTokenBtn">Track Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer (Besloor Reference) -->
+  <footer class="besloor-footer">
+    <div>&copy; 2024 WaitWise Hospital Queue Management System.</div>
+    <ul class="footer-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/pages/display.html">Queue Board</a></li>
+      <li><a href="/pages/login.html?role=doctor">Doctor Access</a></li>
+    </ul>
+  </footer>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (!guardPage('patient')) throw new Error('redirect');
+    renderNavbar('navbar');
+
+    const user = Auth.user;
+    $('#patientGreeting').textContent = `Hello, ${user?.name || 'Patient'} — Queue digitally from home; enter only when your turn arrives.`;
+
+    function playTurnChime() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      } catch (e) {}
+    }
+
+    $('#enableNotifyBtn').onclick = async () => {
+      if ('Notification' in window) {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          alert('Turn notifications enabled! You will receive an alert when your turn is next.');
+          $('#enableNotifyBtn').style.display = 'none';
+        }
+      }
+    };
+    if ('Notification' in window && Notification.permission === 'granted') {
+      $('#enableNotifyBtn').style.display = 'none';
+    }
+
+    function triggerTurnNotification(docName, tokenNum) {
+      playTurnChime();
+      $('#turnAlertBanner').classList.remove('hidden');
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('WaitWise: YOUR TURN HAS ARRIVED!', {
+          body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
+        });
+      }
+    }
+
+    // Tabs
+    $$('.tab').forEach(t => {
+      t.onclick = () => {
+        $$('.tab').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        $$('[id^="tab-"]').forEach(x => x.classList.add('hidden'));
+        $(`#tab-${t.dataset.tab}`).classList.remove('hidden');
+        if (t.dataset.tab === 'myapts') loadMyAppointments();
+      };
+    });
+
+    let doctors = [];
+    let selectedSlot = null;
+    let trackerInterval = null;
+    let trackerCountdown = 10;
+    let currentTrackingId = null;
+
+    async function loadDoctors() {
+      try {
+        const res = await api('GET', '/api/patient/doctors/all');
+        doctors = res.doctors || [];
+        const sel = $('#doctorSelect');
+
+        if (!doctors.length) {
+          sel.innerHTML = '<option value="">No doctors available yet</option>';
+          return;
+        }
+
+        sel.innerHTML = `<option value="">— Select an OP Doctor —</option>` +
+          doctors.map(d => {
+            const availText = d.isAvailable ? '✓ Available' : `⚠️ Unavailable (${d.unavailabilityReason || 'Visiting ward'})`;
+            return `<option value="${d._id}">${d.name} — ${d.specialization} [${availText}]</option>`;
+          }).join('');
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function loadSlots() {
+      const docId = $('#doctorSelect').value;
+      const date  = $('#dateInput').value;
+      selectedSlot = null;
+      $('#selectedSlot').value = '';
+      $('#bookBtn').disabled = true;
+      clearAlert($('#bookAlert'));
+
+      if (!docId || !date) {
+        $('#slotsSection').style.display = 'none';
+        $('#doctorInfo').style.display = 'none';
+        return;
+      }
+
+      const doc = doctors.find(d => String(d._id) === String(docId));
+      if (doc) {
+        const info = $('#doctorInfo');
+        info.style.display = '';
+        if (doc.isAvailable) {
+          info.style.background = 'rgba(16, 185, 129, 0.1)';
+          info.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+          info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
+        } else {
+          info.style.background = 'rgba(239, 68, 68, 0.12)';
+          info.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+          info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization}<br><span style="color:#f87171;font-weight:700;">⚠️ Currently Unavailable: ${doc.unavailabilityReason || 'Visiting existing patients in ward'}</span>`;
+        }
+      }
+
+      $('#slotsSection').style.display = '';
+      $('#slotsWrap').innerHTML = '<p style="color:#94a3b8;font-size:13px">Checking slots...</p>';
+
+      try {
+        const res = await api('GET', `/api/patient/doctors/${docId}/slots?date=${date}`);
+        const slots = res.slots || [];
+        if (!slots.length) {
+          $('#slotsWrap').innerHTML = `<p style="color:#94a3b8;font-size:13px">${res.message || 'No available slots for this date.'}</p>`;
+          return;
+        }
+
+        $('#slotsWrap').innerHTML = slots.map(slot => `
+          <button type="button" class="slot-btn" data-slot="${slot}" style="
+            padding:10px 16px; border-radius:2px; border:1px solid var(--border-light);
+            background:rgba(255,255,255,0.04); color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s">
+            ${slot}
+          </button>
+        `).join('');
+
+        $$('.slot-btn').forEach(btn => {
+          btn.onclick = () => {
+            $$('.slot-btn').forEach(b => {
+              b.style.background = 'rgba(255,255,255,0.04)';
+              b.style.borderColor = 'var(--border-light)';
+              b.style.color = '#ffffff';
+            });
+            btn.style.background = 'var(--accent-orange)';
+            btn.style.borderColor = 'var(--accent-orange)';
+            btn.style.color = '#ffffff';
+            selectedSlot = btn.dataset.slot;
+            $('#selectedSlot').value = selectedSlot;
+            $('#bookBtn').disabled = false;
+          };
+        });
+      } catch (err) {
+        $('#slotsWrap').innerHTML = `<p style="color:#ef4444;font-size:13px">${err.message}</p>`;
+      }
+    }
+
+    $('#doctorSelect').onchange = loadSlots;
+    $('#dateInput').onchange = loadSlots;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    $('#dateInput').min = todayStr;
+    $('#dateInput').value = todayStr;
+
+    $('#bookForm').onsubmit = async (e) => {
+      e.preventDefault();
+      clearAlert($('#bookAlert'));
+      const docId = $('#doctorSelect').value;
+      const date  = $('#dateInput').value;
+
+      if (!docId || !date || !selectedSlot) {
+        return showAlert($('#bookAlert'), 'error', 'Please pick a doctor, date, and slot.');
+      }
+
+      const btn = $('#bookBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Generating Token...';
+
+      try {
+        const res = await api('POST', '/api/patient/book', { doctorId: docId, date, slot: selectedSlot });
+        const a = res.appointment;
+        showAlert($('#bookAlert'), 'success',
+          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${a.estimatedWaitTime} min</b>.`);
+
+        selectedSlot = null;
+        await loadSlots();
+
+        setTimeout(() => {
+          $$('.tab').forEach(x => x.classList.remove('active'));
+          $$('[id^="tab-"]').forEach(x => x.classList.add('hidden'));
+          $('[data-tab="myapts"]').classList.add('active');
+          $('#tab-myapts').classList.remove('hidden');
+          loadMyAppointments();
+          openTracker(a._id);
+        }, 1200);
+      } catch (err) {
+        showAlert($('#bookAlert'), 'error', err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🎟️ Generate OP Digital Token →';
+      }
+    };
+
+    async function loadMyAppointments() {
+      const wrap = $('#aptsList');
+      wrap.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px 0">Loading tokens...</p>';
+
+      try {
+        const { appointments } = await api('GET', '/api/patient/appointments');
+        if (!appointments.length) {
+          wrap.innerHTML = `
+            <div class="card" style="text-align:center;padding:40px 20px;color:#94a3b8">
+              <div style="font-size:36px;margin-bottom:10px">🎟️</div>
+              <p style="font-weight:700;color:#ffffff;font-family:var(--font-serif);font-size:20px;">No tokens booked yet</p>
+              <p style="font-size:13px;margin-top:6px;">Use the 'Book OP Consultation Slot' tab to reserve your appointment.</p>
+            </div>`;
+          return;
+        }
+
+        wrap.innerHTML = appointments.map(a => {
+          const doc = a.doctor || {};
+          const isActive = a.status === 'waiting' || a.status === 'in-consultation';
+          return `
+            <div class="card" style="margin-bottom:18px;">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+                <div style="display:flex;align-items:center;gap:16px">
+                  <div style="width:52px;height:52px;background:rgba(255,255,255,0.06);border:1px solid var(--accent-orange);border-radius:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--accent-orange);flex-shrink:0">
+                    <span style="font-size:9px;letter-spacing:1px;font-weight:700;">TOKEN</span>
+                    <span style="font-family:var(--font-serif);font-size:20px;font-weight:700;line-height:1">#${a.tokenNumber}</span>
+                  </div>
+                  <div>
+                    <div style="font-family:var(--font-serif);font-weight:700;font-size:19px;color:#ffffff">${doc.name || 'Doctor'}</div>
+                    <div style="font-size:13px;color:var(--text-muted)">${doc.specialization || 'OP Clinic'} &bull; Slot: <b style="color:#fff;">${a.slot}</b></div>
+                    <div style="font-size:12px;color:#64748b">Date: ${fmtDate(a.appointmentDate)}</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  ${statusBadge(a.status)}
+                  ${isActive ? `<button class="btn btn-outline-orange btn-sm" onclick="openTracker('${a._id}')" style="font-weight:700;">🔍 Track Live Queue</button>` : ''}
+                  ${a.status === 'waiting' ? `<button class="btn btn-sm btn-danger" onclick="cancelApt('${a._id}')">✕ Cancel</button>` : ''}
+                </div>
+              </div>
+              ${a.status === 'waiting' ? `
+                <div style="margin-top:16px;display:flex;gap:28px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);font-size:13px;">
+                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Queue Position</span><b style="color:#ffffff;font-family:var(--font-serif);font-size:17px;">#${a.queuePosition}</b></div>
+                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Est. Wait Remaining</span><b style="color:var(--accent-orange);font-family:var(--font-serif);font-size:17px;">${a.estimatedWaitTime} min</b></div>
+                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Hospital Entry</span><span style="color:#10b981;font-weight:700;">Remain Off-Site Until Turn</span></div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        wrap.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    async function cancelApt(id) {
+      if (!confirm('Cancel this appointment token?')) return;
+      try {
+        await api('DELETE', `/api/patient/appointments/${id}`);
+        loadMyAppointments();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function openTracker(aptId) {
+      currentTrackingId = aptId;
+      $('#tokenModal').classList.remove('hidden');
+      fetchTokenStatus();
+      startCountdown();
+    }
+
+    function closeTracker() {
+      $('#tokenModal').classList.add('hidden');
+      clearInterval(trackerInterval);
+      trackerInterval = null;
+      currentTrackingId = null;
+    }
+
+    function startCountdown() {
+      clearInterval(trackerInterval);
+      trackerCountdown = 10;
+      trackerInterval = setInterval(() => {
+        trackerCountdown--;
+        $('#countdownLabel').textContent = `Tracking: refresh in ${trackerCountdown}s`;
+        if (trackerCountdown <= 0) {
+          fetchTokenStatus();
+          trackerCountdown = 10;
+        }
+      }, 1000);
+    }
+
+    async function fetchTokenStatus() {
+      if (!currentTrackingId) return;
+      const content = $('#tokenContent');
+      try {
+        const { token: t } = await api('GET', `/api/patient/token/${currentTrackingId}`);
+
+        let statusMsg = '';
+        if (t.status === 'completed') {
+          statusMsg = '✅ Consultation complete. Thank you!';
+        } else if (t.status === 'cancelled') {
+          statusMsg = '❌ Appointment was cancelled.';
+        } else if (t.status === 'in-consultation') {
+          statusMsg = '🩺 You are currently inside the Consultation Room.';
+          triggerTurnNotification(t.doctor?.name, t.tokenNumber);
+        } else if (t.patientsAhead === 0) {
+          statusMsg = '🔔 YOUR TURN IS NEXT! Please proceed to the room.';
+          triggerTurnNotification(t.doctor?.name, t.tokenNumber);
+        } else {
+          statusMsg = `⏳ ${t.patientsAhead} patient${t.patientsAhead !== 1 ? 's' : ''} ahead in queue.`;
+        }
+
+        const progressPct = t.status === 'completed' ? 100 :
+          t.status === 'in-consultation' ? 95 :
+          t.patientsAhead === 0 ? 80 :
+          Math.max(15, 100 - (t.patientsAhead * 20));
+
+        content.innerHTML = `
+          <div style="text-align:center;margin-bottom:18px">
+            <div class="token-circle-big">
+              <span class="token-label-sm">TOKEN</span>
+              <span class="token-num-big">#${t.tokenNumber}</span>
+            </div>
+            <div style="font-family:var(--font-serif);font-size:22px;font-weight:700;color:#ffffff">${t.doctor?.name || ''}</div>
+            <div style="font-size:13px;color:var(--accent-orange)">${t.doctor?.specialization || ''} &bull; Slot: <b>${t.slot}</b></div>
+          </div>
+
+          <div style="text-align:center;padding:12px 16px;background:rgba(224, 131, 58, 0.12);border:1px solid rgba(224, 131, 58, 0.35);border-radius:2px;color:#fed7aa;font-weight:700;font-size:14px;margin-bottom:18px">
+            ${statusMsg}
+          </div>
+
+          ${t.status === 'waiting' ? `
+            <div class="info-grid">
+              <div class="info-cell">
+                <div class="info-cell-label">Queue Position</div>
+                <div class="info-cell-val" style="color:var(--accent-orange);">#${t.queuePosition}</div>
+                <div class="info-cell-sub">${t.patientsAhead} ahead</div>
+              </div>
+              <div class="info-cell">
+                <div class="info-cell-label">Est. Wait Time</div>
+                <div class="info-cell-val" style="color:#ffffff;">${t.estimatedWaitTime}</div>
+                <div class="info-cell-sub">minutes</div>
+              </div>
+            </div>
+
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:${progressPct}%;"></div>
+            </div>
+
+            <div style="font-size:12px;color:var(--text-muted);text-align:center;">
+              💡 Position updates automatically when doctor finishes prior consultations.
+            </div>
+          ` : ''}
+        `;
+      } catch (err) {
+        content.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    $('#modalClose').onclick = closeTracker;
+    $('#tokenModal').onclick = e => { if (e.target === $('#tokenModal')) closeTracker(); };
+    $('#refreshTokenBtn').onclick = () => { fetchTokenStatus(); trackerCountdown = 10; };
+    $('#refreshAptsBtn').onclick = loadMyAppointments;
+
+    loadDoctors();
+    loadMyAppointments();
+  </script>
+</body>
+</html>

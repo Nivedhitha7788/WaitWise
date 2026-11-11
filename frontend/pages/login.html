@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Access — WaitWise</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="navbar"></div>
+
+  <div class="auth-page">
+    <div class="auth-card">
+      <h1 class="auth-title">Portal Access</h1>
+      <div class="orange-bar"></div>
+      <p class="auth-subtitle">Select your role to access the outpatient queue management system</p>
+
+      <!-- Role Tabs (Besloor Style) -->
+      <div class="auth-role-tabs">
+        <button type="button" class="auth-tab active" data-role="patient">Patient</button>
+        <button type="button" class="auth-tab" data-role="doctor">Doctor</button>
+        <button type="button" class="auth-tab" data-role="admin">Admin</button>
+      </div>
+
+      <div id="alertBox"></div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input class="form-input" type="email" id="email" placeholder="patient@example.com" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input class="form-input" type="password" id="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-orange btn-block" id="submitBtn" style="padding: 13px; font-size: 13px; margin-top: 10px;">
+          Sign In as Patient &rarr;
+        </button>
+      </form>
+
+      <div class="auth-footer" id="registerLink">
+        New patient to the hospital?
+        <a href="/pages/register.html" class="auth-link">Register here &rarr;</a>
+      </div>
+      <div class="auth-footer" id="doctorNotice" style="display: none; font-size: 12px; color: var(--text-dim);">
+        Doctor registration is managed by Hospital Administration.
+      </div>
+      <div class="auth-footer" id="adminNotice" style="display: none; font-size: 12px; color: var(--text-dim);">
+        Authorized hospital administrative personnel only.
+      </div>
+    </div>
+  </div>
+
+  <footer class="besloor-footer">
+    <div>&copy; 2024 WaitWise Hospital Queue Management System.</div>
+    <ul class="footer-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/pages/display.html">Queue Board</a></li>
+      <li><a href="/pages/register.html">Register</a></li>
+    </ul>
+  </footer>
+
+  <script src="/js/api.js"></script>
+  <script>
+    renderNavbar('navbar');
+
+    if (Auth.isAuth) {
+      const map = { admin: '/pages/admin.html', doctor: '/pages/doctor.html', patient: '/pages/patient.html' };
+      window.location.href = map[Auth.role] || '/';
+    }
+
+    let activeRole = 'patient';
+
+    function setRole(role) {
+      activeRole = role;
+      $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.role === role));
+      clearAlert($('#alertBox'));
+
+      const regLink = $('#registerLink');
+      const docNotice = $('#doctorNotice');
+      const admNotice = $('#adminNotice');
+
+      regLink.style.display = role === 'patient' ? '' : 'none';
+      if (docNotice) docNotice.style.display = role === 'doctor' ? '' : 'none';
+      if (admNotice) admNotice.style.display = role === 'admin' ? '' : 'none';
+
+      const labelMap = { patient: 'Patient', doctor: 'Doctor', admin: 'Administrator' };
+      $('#submitBtn').textContent = `Sign in as ${labelMap[role] || role} →`;
+
+      const emailField = $('#email');
+      const passField = $('#password');
+      emailField.value = '';
+      passField.value = '';
+
+      if (role === 'doctor') {
+        emailField.placeholder = 'doctor@hospital.com';
+      } else if (role === 'admin') {
+        emailField.placeholder = 'admin@waitwise.com';
+      } else {
+        emailField.placeholder = 'patient@example.com';
+      }
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialRole = urlParams.get('role');
+    if (initialRole && ['patient', 'doctor', 'admin'].includes(initialRole)) {
+      setRole(initialRole);
+    } else {
+      setRole('patient');
+    }
+
+    $$('.auth-tab').forEach(tab => {
+      tab.onclick = () => setRole(tab.dataset.role);
+    });
+
+    $('#loginForm').onsubmit = async (e) => {
+      e.preventDefault();
+      clearAlert($('#alertBox'));
+      const btn = $('#submitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Signing in...';
+
+      try {
+        const data = await api('POST', '/api/auth/login', {
+          email: $('#email').value.trim(),
+          password: $('#password').value,
+          role: activeRole
+        });
+        Auth.login(data.token, data.user);
+        const map = { admin: '/pages/admin.html', doctor: '/pages/doctor.html', patient: '/pages/patient.html' };
+        window.location.href = map[data.user.role] || '/';
+      } catch (err) {
+        showAlert($('#alertBox'), 'error', err.message || 'Login failed.');
+        btn.disabled = false;
+        const labelMap = { patient: 'Patient', doctor: 'Doctor', admin: 'Administrator' };
+        btn.textContent = `Sign in as ${labelMap[activeRole] || activeRole} →`;
+      }
+    };
+  </script>
+</body>
+</html>
