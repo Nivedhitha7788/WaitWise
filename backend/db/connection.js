@@ -25,7 +25,7 @@ async function connectDB() {
     throw new Error(`Unable to connect to MongoDB: ${err.message}`, { cause: err });
   }
 
-  // Seed default admin, patient, and 4 doctors (OP only)
+  // Seed default accounts and the fixed two-doctor psychiatry clinic.
   await seedInitialData(getCol);
 
   return db;

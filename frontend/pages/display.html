@@ -137,10 +137,11 @@
     <div>Auto-refreshes every 5 seconds</div>
   </footer>
 
+  <script src="/js/api.js"></script>
   <script>
     function updateClock() {
       const now = new Date();
-      document.getElementById('liveClock').textContent = now.toLocaleTimeString('en-US');
+      document.getElementById('liveClock').textContent = now.toLocaleTimeString(I18n.locale);
     }
     setInterval(updateClock, 1000);
     updateClock();
@@ -187,14 +188,14 @@
                   <div style="font-size:11px; text-transform:uppercase; letter-spacing:1.5px; color:var(--text-muted); font-weight:700;">Now In Consultation</div>
                   <div class="token-big">${hasInRoom ? `#${d.currentToken}` : '—'}</div>
                   <div style="font-size: 12px; color: var(--text-dim); margin-top: 6px;">
-                    ${hasInRoom ? `Slot: <b style="color:var(--text-light);">${d.currentSlot || 'In Progress'}</b>` : 'Consultation room is ready'}
+                    ${hasInRoom ? `${d.currentSession || ''} Session: <b style="color:var(--text-light);">${d.currentSlot || 'In Progress'}</b>` : 'Consultation room is ready'}
                   </div>
                 </div>
 
                 <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(8,17,30,0.5); border:1px solid var(--border-light); padding:12px 14px; border-radius:2px; font-size:13px; margin-bottom:20px;">
                   <span style="color:var(--text-muted); font-weight:600;">Next To Enter:</span>
                   <b style="color: var(--accent-orange); font-family:var(--font-serif); font-size: 16px;">
-                    ${d.nextToken ? `#${d.nextToken} (${d.nextSlot || ''})` : 'Queue Empty'}
+                    ${d.nextToken ? `#${d.nextToken} (${d.nextSession || ''} ${d.nextSlot || ''})` : 'Queue Empty'}
                   </b>
                 </div>
               `}

@@ -53,7 +53,7 @@
           <div id="bookAlert"></div>
           <form id="bookForm">
             <div class="form-group">
-              <label class="form-label">Select OP Specialist Doctor <span class="req">*</span></label>
+              <label class="form-label">Select General Psychiatry Doctor <span class="req">*</span></label>
               <select class="form-select" id="doctorSelect">
                 <option value="">Loading doctors from hospital database...</option>
               </select>
@@ -68,7 +68,7 @@
             </div>
 
             <div class="form-group" id="slotsSection" style="display:none;">
-              <label class="form-label">Available Time Slots <span class="req">*</span></label>
+              <label class="form-label">Available Sessions &amp; Appointment Times <span class="req">*</span></label>
               <div id="slotsWrap" style="display:flex; gap:10px; flex-wrap:wrap; min-height:40px; margin-top:10px;">
                 <p style="color:#94a3b8; font-size:13px;">Select a date to display available OP slots.</p>
               </div>
@@ -181,6 +181,7 @@
 
     let doctors = [];
     let selectedSlot = null;
+    let selectedSession = null;
     let trackerInterval = null;
     let trackerCountdown = 10;
     let currentTrackingId = null;
@@ -210,6 +211,7 @@
       const docId = $('#doctorSelect').value;
       const date  = $('#dateInput').value;
       selectedSlot = null;
+      selectedSession = null;
       $('#selectedSlot').value = '';
       $('#bookBtn').disabled = true;
       clearAlert($('#bookAlert'));
@@ -240,18 +242,27 @@
 
       try {
         const res = await api('GET', `/api/patient/doctors/${docId}/slots?date=${date}`);
-        const slots = res.slots || [];
-        if (!slots.length) {
+        const sessions = res.sessions || [];
+        if (!sessions.some(session => session.slots.length)) {
           $('#slotsWrap').innerHTML = `<p style="color:#94a3b8;font-size:13px">${res.message || 'No available slots for this date.'}</p>`;
           return;
         }
 
-        $('#slotsWrap').innerHTML = slots.map(slot => `
-          <button type="button" class="slot-btn" data-slot="${slot}" style="
-            padding:10px 16px; border-radius:2px; border:1px solid var(--border-light);
-            background:rgba(255,255,255,0.04); color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s">
-            ${slot}
-          </button>
+        $('#slotsWrap').innerHTML = sessions.filter(session => session.slots.length).map(session => `
+          <section style="width:100%;margin-bottom:14px;">
+            <h3 style="color:var(--accent-orange);font-size:14px;margin-bottom:8px;">
+              ${session.code} Session — ${session.code === 'FN' ? 'Forenoon' : 'Afternoon'}
+            </h3>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              ${session.slots.map(slot => `
+                <button type="button" class="slot-btn" data-session="${session.code}" data-slot="${slot}" style="
+                  padding:10px 16px; border-radius:2px; border:1px solid var(--border-light);
+                  background:rgba(255,255,255,0.04); color:#ffffff; font-size:13px; font-weight:600; cursor:pointer; transition:all .15s">
+                  ${slot}
+                </button>
+              `).join('')}
+            </div>
+          </section>
         `).join('');
 
         $$('.slot-btn').forEach(btn => {
@@ -265,6 +276,7 @@
             btn.style.borderColor = 'var(--accent-orange)';
             btn.style.color = '#ffffff';
             selectedSlot = btn.dataset.slot;
+            selectedSession = btn.dataset.session;
             $('#selectedSlot').value = selectedSlot;
             $('#bookBtn').disabled = false;
           };
@@ -296,7 +308,9 @@
       btn.innerHTML = '<span class="spinner"></span> Generating Token...';
 
       try {
-        const res = await api('POST', '/api/patient/book', { doctorId: docId, date, slot: selectedSlot });
+        const res = await api('POST', '/api/patient/book', {
+          doctorId: docId, date, session: selectedSession, slot: selectedSlot
+        });
         const a = res.appointment;
         showAlert($('#bookAlert'), 'success',
           `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${a.estimatedWaitTime} min</b>.`);
@@ -349,7 +363,7 @@
                   </div>
                   <div>
                     <div style="font-family:var(--font-serif);font-weight:700;font-size:19px;color:#ffffff">${doc.name || 'Doctor'}</div>
-                    <div style="font-size:13px;color:var(--text-muted)">${doc.specialization || 'OP Clinic'} &bull; Slot: <b style="color:#fff;">${a.slot}</b></div>
+                    <div style="font-size:13px;color:var(--text-muted)">${doc.specialization || 'Psychiatry Clinic'} &bull; ${a.session || ''} Session: <b style="color:#fff;">${a.slot}</b></div>
                     <div style="font-size:12px;color:#64748b">Date: ${fmtDate(a.appointmentDate)}</div>
                   </div>
                 </div>
@@ -444,7 +458,7 @@
               <span class="token-num-big">#${t.tokenNumber}</span>
             </div>
             <div style="font-family:var(--font-serif);font-size:22px;font-weight:700;color:#ffffff">${t.doctor?.name || ''}</div>
-            <div style="font-size:13px;color:var(--accent-orange)">${t.doctor?.specialization || ''} &bull; Slot: <b>${t.slot}</b></div>
+            <div style="font-size:13px;color:var(--accent-orange)">${t.doctor?.specialization || ''} &bull; ${t.session || ''} Session: <b>${t.slot}</b></div>
           </div>
 
           <div style="text-align:center;padding:12px 16px;background:rgba(224, 131, 58, 0.12);border:1px solid rgba(224, 131, 58, 0.35);border-radius:2px;color:#fed7aa;font-weight:700;font-size:14px;margin-bottom:18px">

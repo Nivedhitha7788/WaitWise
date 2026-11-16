@@ -3,22 +3,7 @@ const router = express.Router();
 const { ObjectId, getCol } = require('../db/connection');
 const { requireDoctor } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
-
-function generateTimeSlots(startTime, endTime, durationMinutes) {
-  const slots = [];
-  const [sh, sm] = startTime.split(':').map(Number);
-  const [eh, em] = endTime.split(':').map(Number);
-  let cur = sh * 60 + sm;
-  const end = eh * 60 + em;
-  const dur = durationMinutes || 15;
-  while (cur + dur <= end) {
-    const s = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`;
-    cur += dur;
-    const e = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`;
-    slots.push(`${s} - ${e}`);
-  }
-  return slots;
-}
+const { SESSION_SLOTS } = require('../utils/clinicConfig');
 
 async function recalculateQueue(doctorId, appointmentDate) {
   const appointments = getCol('appointments');
@@ -65,7 +50,7 @@ router.get('/profile', requireDoctor(), async (req, res) => {
   }
 });
 
-// GET /api/doctor/queue — today's OP queue and statistics
+// GET /api/doctor/queue — today's psychiatry queue and statistics
 router.get('/queue', requireDoctor(), async (req, res) => {
   try {
     const appointments = getCol('appointments');
@@ -224,10 +209,10 @@ router.get('/slots', requireDoctor(), async (req, res) => {
 
     const dayName = getDayName(date);
     const slotConfig = (doctor.availableSlots || []).find(s => s.day === dayName);
-    if (!slotConfig) return res.json({ success: true, slots: [], dayName });
-
-    const slots = generateTimeSlots(slotConfig.startTime, slotConfig.endTime, doctor.consultationTime);
-    res.json({ success: true, slots, dayName, consultationTime: doctor.consultationTime });
+    if (!slotConfig) return res.json({ success: true, slots: [], sessions: [], dayName });
+    const sessions = Array.isArray(slotConfig.sessions) ? slotConfig.sessions : SESSION_SLOTS;
+    const slots = sessions.flatMap(session => session.slots);
+    res.json({ success: true, slots, sessions, dayName, consultationTime: doctor.consultationTime });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }

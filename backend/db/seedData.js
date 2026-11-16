@@ -1,9 +1,27 @@
 const bcrypt = require('bcryptjs');
+const {
+  CLINIC_SPECIALIZATION,
+  CONSULTATION_MINUTES,
+  MAX_DOCTORS,
+  buildAvailableSlots
+} = require('../utils/clinicConfig');
+
+const DEFAULT_DOCTORS = [
+  {
+    name: 'Dr. Rajesh Sharma',
+    email: 'dr.sharma@waitwise.com'
+  },
+  {
+    name: 'Dr. Priya Patel',
+    email: 'dr.patel@waitwise.com'
+  }
+];
 
 async function seedInitialData(getCol) {
   try {
     const users = getCol('users');
     const doctors = getCol('doctors');
+    const metadata = getCol('metadata');
 
     // 1. Seed Admin
     const adminExists = await users.findOne({ role: 'admin' });
@@ -37,63 +55,52 @@ async function seedInitialData(getCol) {
       console.log('✓ Patient seeded: patient@waitwise.com / patient123');
     }
 
-    // 3. Seed Exactly 4 Doctors (OP only)
-    const doctorCount = await doctors.countDocuments();
-    if (doctorCount === 0) {
-      const defaultDoctorPass = await bcrypt.hash('doctor123', 10);
-      const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Migrate the former four-doctor seed to two psychiatry doctors once.
+    const migration = await metadata.findOne({ key: 'psychiatry-clinic-v1' });
+    if (!migration) {
+      const existingDoctors = await doctors.find({}).toArray();
+      const defaultEmails = DEFAULT_DOCTORS.map(doctor => doctor.email);
+      const retained = existingDoctors.filter(doctor => defaultEmails.includes(doctor.email));
+      const retainedIds = new Set(retained.slice(0, MAX_DOCTORS).map(doctor => String(doctor._id)));
 
-      const fourDoctors = [
-        {
-          name: 'Dr. Rajesh Sharma',
-          email: 'dr.sharma@waitwise.com',
-          password: defaultDoctorPass,
-          specialization: 'General Medicine (OP)',
-          consultationTime: 15,
-          isAvailable: true,
-          unavailabilityReason: '',
-          availableSlots: weekDays.map(day => ({ day, startTime: '09:00', endTime: '13:00' })),
-          createdAt: new Date()
-        },
-        {
-          name: 'Dr. Priya Patel',
-          email: 'dr.patel@waitwise.com',
-          password: defaultDoctorPass,
-          specialization: 'Pediatrics (OP)',
-          consultationTime: 15,
-          isAvailable: true,
-          unavailabilityReason: '',
-          availableSlots: weekDays.map(day => ({ day, startTime: '10:00', endTime: '14:00' })),
-          createdAt: new Date()
-        },
-        {
-          name: 'Dr. Anita Desai',
-          email: 'dr.desai@waitwise.com',
-          password: defaultDoctorPass,
-          specialization: 'Dermatology (OP)',
-          consultationTime: 20,
-          isAvailable: false,
-          unavailabilityReason: 'Doctor visiting existing patients in ward (In-Patient rounds)',
-          availableSlots: weekDays.map(day => ({ day, startTime: '11:00', endTime: '15:00' })),
-          createdAt: new Date()
-        },
-        {
-          name: 'Dr. Vikram Rao',
-          email: 'dr.rao@waitwise.com',
-          password: defaultDoctorPass,
-          specialization: 'Orthopedics (OP)',
-          consultationTime: 15,
-          isAvailable: true,
-          unavailabilityReason: '',
-          availableSlots: weekDays.map(day => ({ day, startTime: '09:30', endTime: '13:30' })),
-          createdAt: new Date()
+      for (const doctor of existingDoctors) {
+        const keep = retainedIds.has(String(doctor._id));
+        if (!keep) {
+          await doctors.updateOne({ _id: doctor._id }, { $set: { retired: true } });
         }
-      ];
-
-      for (const doc of fourDoctors) {
-        await doctors.insertOne(doc);
       }
-      console.log('✓ 4 OP Doctors seeded (dr.sharma@waitwise.com, dr.patel@waitwise.com, dr.desai@waitwise.com, dr.rao@waitwise.com / doctor123)');
+
+      const defaultDoctorPass = await bcrypt.hash('doctor123', 10);
+      for (const doctorInfo of DEFAULT_DOCTORS) {
+        let doctor = await doctors.findOne({ email: doctorInfo.email });
+        if (!doctor) {
+          const result = await doctors.insertOne({
+            ...doctorInfo,
+            password: defaultDoctorPass,
+            isAvailable: true,
+            unavailabilityReason: '',
+            createdAt: new Date()
+          });
+          doctor = { _id: result.insertedId };
+        }
+
+        await doctors.updateOne(
+          { _id: doctor._id },
+          {
+            $set: {
+              name: doctor.name || doctorInfo.name,
+              specialization: CLINIC_SPECIALIZATION,
+              consultationTime: CONSULTATION_MINUTES,
+              availableSlots: buildAvailableSlots(),
+              isAvailable: true,
+              unavailabilityReason: '',
+              retired: false
+            }
+          }
+        );
+      }
+      await metadata.insertOne({ key: 'psychiatry-clinic-v1', completedAt: new Date() });
+      console.log('✓ Psychiatry clinic configured with 2 General Psychiatry doctors.');
     }
   } catch (err) {
     console.error('Error in seedInitialData:', err.message);

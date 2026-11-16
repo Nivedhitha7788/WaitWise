@@ -90,6 +90,9 @@ router.post('/login', async (req, res) => {
     if (!doc) {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
+    if (actualRole === 'doctor' && doc.retired) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password.' });
+    }
 
     const ok = await bcrypt.compare(password, doc.password);
     if (!ok) {
