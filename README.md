@@ -16,7 +16,7 @@
   - Web Audio & Browser Notification chimes when the user's turn arrives (`#turnAlertBanner`).
   - Automatic queue advancement whenever a doctor marks past consultations as completed.
 - **Ward Visits Status:** Doctors can mark themselves unavailable with reasons such as *"Visiting existing patients in ward (In-Patient rounds)"*.
-- **Dual-Engine Database Connectivity:** Connects natively to MongoDB (`mongodb://localhost:27017/waitwise`) when available, and automatically falls back to an embedded JSON database engine so the application works out-of-the-box anywhere without configuration.
+- **MongoDB Persistence:** Patient registrations, appointments, doctor availability, consultation notes, and system data are stored in MongoDB. The server will not start if MongoDB is unavailable, preventing data from being silently written to a different store.
 
 ---
 
@@ -64,6 +64,8 @@
 ## 🚀 How to Run the Application
 
 ### 1. Start the Server
+Start MongoDB locally, or set `MONGO_URI` to your MongoDB connection string. The default is `mongodb://localhost:27017/waitwise`.
+
 From the project root:
 ```bash
 npm start
@@ -86,4 +88,3 @@ Run the comprehensive end-to-end test suite:
 npm test
 ```
 All 13 system test cases covering authentication, 4-doctor limits, token generation, live tracking, and queue auto-updates run in-process and will report test results.
-

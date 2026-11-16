@@ -97,8 +97,8 @@ async function seedInitialData(getCol) {
     }
   } catch (err) {
     console.error('Error in seedInitialData:', err.message);
+    throw err;
   }
 }
 
 module.exports = { seedInitialData };
-
