@@ -3,21 +3,15 @@ const router = express.Router();
 const { ObjectId, getCol } = require('../db/connection');
 const { requirePatient } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
+const { SESSION_SLOTS, isPastClinicSlot } = require('../utils/clinicConfig');
 
-function generateTimeSlots(startTime, endTime, durationMinutes) {
-  const slots = [];
-  const [sh, sm] = startTime.split(':').map(Number);
-  const [eh, em] = endTime.split(':').map(Number);
-  let cur = sh * 60 + sm;
-  const end = eh * 60 + em;
-  const dur = durationMinutes || 15;
-  while (cur + dur <= end) {
-    const s = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`;
-    cur += dur;
-    const e = `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`;
-    slots.push(`${s} - ${e}`);
-  }
-  return slots;
+function getDaySessions(doctor, dayName) {
+  const schedule = (doctor.availableSlots || []).find(item => item.day === dayName);
+  if (!schedule) return [];
+  if (Array.isArray(schedule.sessions)) return schedule.sessions;
+
+  // Keep the new fixed-session API usable during rolling upgrades from legacy schedules.
+  return SESSION_SLOTS;
 }
 
 async function recalculateQueue(doctorId, appointmentDate) {
@@ -55,7 +49,7 @@ router.get('/public/display', async (req, res) => {
     const appointments = getCol('appointments');
     const { start, end } = getDayRange(new Date());
 
-    const allDoctors = await doctors.find({}, { projection: { password: 0 } }).toArray();
+    const allDoctors = await doctors.find({ retired: { $ne: true } }, { projection: { password: 0 } }).toArray();
 
     const boards = await Promise.all(allDoctors.map(async doc => {
       const docIdStr = String(doc._id);
@@ -90,8 +84,10 @@ router.get('/public/display', async (req, res) => {
         isAvailable: doc.isAvailable,
         unavailabilityReason: doc.unavailabilityReason,
         currentToken: current ? current.tokenNumber : null,
+        currentSession: current ? current.session || null : null,
         currentSlot: current ? current.slot : null,
         nextToken: nextApt ? nextApt.tokenNumber : null,
+        nextSession: nextApt ? nextApt.session || null : null,
         nextSlot: nextApt ? nextApt.slot : null,
         waitingCount: nextList.length,
         completedCount
@@ -108,7 +104,7 @@ router.get('/public/display', async (req, res) => {
 // GET /api/patient/doctors — available doctors
 router.get('/doctors', requirePatient(), async (req, res) => {
   try {
-    const doctors = await getCol('doctors').find({ isAvailable: true }, { projection: { password: 0 } }).toArray();
+    const doctors = await getCol('doctors').find({ isAvailable: true, retired: { $ne: true } }, { projection: { password: 0 } }).toArray();
     res.json({ success: true, doctors });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -118,7 +114,7 @@ router.get('/doctors', requirePatient(), async (req, res) => {
 // GET /api/patient/doctors/all — all doctors (includes availability status & ward visit reason)
 router.get('/doctors/all', requirePatient(), async (req, res) => {
   try {
-    const doctors = await getCol('doctors').find({}, { projection: { password: 0 } }).toArray();
+    const doctors = await getCol('doctors').find({ retired: { $ne: true } }, { projection: { password: 0 } }).toArray();
     res.json({ success: true, doctors });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -141,13 +137,13 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
       doctor = await doctors.findOne({ _id: docIdStr });
     }
 
-    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found.' });
+    if (!doctor || doctor.retired) return res.status(404).json({ success: false, message: 'Doctor not found.' });
 
     const dayName = getDayName(date);
-    const slotConfig = (doctor.availableSlots || []).find(s => s.day === dayName);
-    if (!slotConfig) return res.json({ success: true, slots: [], message: `No OP consultation slots configured on ${dayName}.` });
+    const sessions = getDaySessions(doctor, dayName);
+    if (!sessions.length) return res.json({ success: true, slots: [], sessions: [], message: `No consultation slots configured on ${dayName}.` });
 
-    const allSlots = generateTimeSlots(slotConfig.startTime, slotConfig.endTime, doctor.consultationTime);
+    const allSlots = sessions.flatMap(session => session.slots);
     const { start, end } = getDayRange(date);
 
     const booked = await getCol('appointments').find({
@@ -157,9 +153,15 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
     }).toArray();
 
     const bookedSlots = booked.map(a => a.slot);
-    const available = allSlots.filter(s => !bookedSlots.includes(s));
+    const available = allSlots.filter(s => !bookedSlots.includes(s) && !isPastClinicSlot(date, s));
 
-    res.json({ success: true, slots: available, allSlots, bookedSlots, dayName });
+    const availableSet = new Set(available);
+    const availableSessions = sessions.map(session => ({
+      code: session.code,
+      slots: session.slots.filter(slot => availableSet.has(slot))
+    }));
+
+    res.json({ success: true, slots: available, allSlots, bookedSlots, sessions: availableSessions, dayName });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -169,7 +171,7 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
 // POST /api/patient/book
 router.post('/book', requirePatient(), async (req, res) => {
   try {
-    const { doctorId, date, slot } = req.body;
+    const { doctorId, date, slot, session: requestedSession } = req.body;
     if (!doctorId || !date || !slot)
       return res.status(400).json({ success: false, message: 'Doctor, date, and slot are required.' });
 
@@ -184,7 +186,7 @@ router.post('/book', requirePatient(), async (req, res) => {
       doctor = await doctors.findOne({ _id: docIdStr });
     }
 
-    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found.' });
+    if (!doctor || doctor.retired) return res.status(404).json({ success: false, message: 'Doctor not found.' });
     if (!doctor.isAvailable) {
       const reason = doctor.unavailabilityReason || 'Doctor is currently visiting existing patients in ward';
       return res.status(400).json({ success: false, message: `Doctor is currently unavailable: ${reason}` });
@@ -192,6 +194,16 @@ router.post('/book', requirePatient(), async (req, res) => {
 
     const { start, end } = getDayRange(date);
     const appointmentDate = parseAppointmentDate(date);
+    const sessions = getDaySessions(doctor, getDayName(date));
+    const matchingSession = sessions.find(item =>
+      item.slots.includes(slot) && (!requestedSession || item.code === requestedSession)
+    );
+    if (!matchingSession) {
+      return res.status(400).json({ success: false, message: 'Select a valid consultation slot for this date and session.' });
+    }
+    if (isPastClinicSlot(date, slot)) {
+      return res.status(400).json({ success: false, message: 'This consultation time has already passed.' });
+    }
 
     // Prevent duplicate booking for same patient + same doctor on same day
     const existing = await appointments.findOne({
@@ -215,19 +227,15 @@ router.post('/book', requirePatient(), async (req, res) => {
       return res.status(409).json({ success: false, message: 'This slot was just booked by another patient. Please select another slot.' });
     }
 
-    // Auto token number: total non-cancelled appointments for this doctor on this day + 1
-    const totalCount = await appointments.countDocuments({
-      doctorId: docIdStr,
-      appointmentDate: { $gte: start, $lte: end },
-      status: { $ne: 'cancelled' }
-    });
-    const tokenNumber = totalCount + 1;
+    // Number tokens by appointment time so queue order follows the fixed schedule.
+    const tokenNumber = sessions.flatMap(item => item.slots).indexOf(slot) + 1;
 
     // Queue position = waiting appointments ahead of this one + 1
     const ahead = await appointments.countDocuments({
       doctorId: docIdStr,
       appointmentDate: { $gte: start, $lte: end },
-      status: 'waiting'
+      status: 'waiting',
+      tokenNumber: { $lt: tokenNumber }
     });
     const queuePosition = ahead + 1;
     const estimatedWaitTime = ahead * doctor.consultationTime;
@@ -236,6 +244,7 @@ router.post('/book', requirePatient(), async (req, res) => {
       patientId: String(req.user.id),
       doctorId: docIdStr,
       appointmentDate,
+      session: matchingSession.code,
       slot,
       tokenNumber,
       status: 'waiting',
@@ -245,6 +254,7 @@ router.post('/book', requirePatient(), async (req, res) => {
       completedAt: null,
       notes: ''
     });
+    await recalculateQueue(docIdStr, appointmentDate);
 
     res.status(201).json({
       success: true,
@@ -252,6 +262,7 @@ router.post('/book', requirePatient(), async (req, res) => {
       appointment: {
         _id: result.insertedId,
         tokenNumber,
+        session: matchingSession.code,
         slot,
         queuePosition,
         estimatedWaitTime,
@@ -338,6 +349,7 @@ router.get('/token/:appointmentId', requirePatient(), async (req, res) => {
         tokenNumber: apt.tokenNumber,
         status: apt.status,
         slot: apt.slot,
+        session: apt.session || null,
         appointmentDate: apt.appointmentDate,
         doctor: {
           name: doctor?.name,

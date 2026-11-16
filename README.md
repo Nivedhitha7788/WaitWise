@@ -9,7 +9,9 @@
 
 - **Abstract & Minimalist Interface:** Clean, focused UI without information clutter.
 - **Strictly OP (Outpatient) Consultations:** Emergency cases are explicitly guided to the Emergency & Trauma Ward.
-- **Strict 4-Doctor Hospital Capacity:** The system strictly maintains exactly 4 OP specialist doctors, with each connected to MongoDB.
+- **Psychiatry Clinic:** The clinic has exactly two active doctors, both configured for General Psychiatry.
+- **Fixed Appointment Sessions:** Monday–Saturday appointments use FN (forenoon) and AN (afternoon) sessions, with six fixed one-hour appointments per doctor per day. Past same-day appointments are hidden and rejected using the clinic's Asia/Kolkata time.
+- **Multilingual Interface:** Use the language selector to switch between English, Tamil, and Hindi; the choice is saved in the browser.
 - **Real-Time Digital Token Lifecycle:** 
   - Token generated on slot reservation.
   - Frequent live tracking (auto-updates every 10 seconds).
@@ -24,7 +26,7 @@
 
 ### 1. 🧑‍⚕️ Patient Interface
 - **Home Navigation:** Simple, uncluttered landing page with single-click navigation to Register or Login.
-- **OP Appointment Booking:** Select from available doctors, view consultation duration (e.g. 15 min), and select from dynamically generated time slots.
+- **Appointment Booking:** Select a General Psychiatry doctor, date, session, and one of the fixed one-hour consultation times.
 - **Digital Token Generation:** Instant issuance of Token Number with initial queue position and estimated wait time.
 - **Frequent Token Tracking:** Live visual progress bar, real-time patients ahead countdown, current room occupant, and audio/banner alerts when turn arrives.
 - **Queue Auto-Update:** As doctors finish with patients, the queue automatically advances.
@@ -39,9 +41,9 @@
 - **Strict Policy:** Prominent warning that only OP consultations are handled.
 
 ### 3. 🔧 Admin Interface
-- **Overall System Dashboard:** Real-time counters for Total Patients, Registered Doctors (4/4), Today's Bookings, Waiting Patients, In-Consultation, and Completed Consultations.
-- **Doctor Registration (Strict Max 4):** Admin can register new OP doctors with name, email, specialization, slot duration, and working days/hours. System strictly rejects attempts to register more than 4 doctors.
-- **Live Doctors Snapshot:** View today's queue load and availability across all 4 doctors, with ability to toggle doctor availability and update ward visit status.
+- **Overall System Dashboard:** Real-time counters for Total Patients, Registered Doctors (2/2), Today's Bookings, Waiting Patients, In-Consultation, and Completed Consultations.
+- **Doctor Registration (Strict Max 2):** Admin can register doctors up to the two-doctor clinic limit. New accounts automatically use General Psychiatry and the fixed clinic schedule.
+- **Live Doctors Snapshot:** View today's queue load and availability across the two clinic doctors.
 - **Appointments Directory:** Searchable table of all patient bookings, slots, token numbers, and status.
 
 ---
@@ -51,13 +53,18 @@
 | Role | Email | Password | Details |
 |---|---|---|---|
 | **Admin** | `admin@waitwise.com` | `admin123` | Hospital Administrator |
-| **Doctor 1** | `dr.sharma@waitwise.com` | `doctor123` | Dr. Rajesh Sharma — General Medicine (OP) [15 min] |
-| **Doctor 2** | `dr.patel@waitwise.com` | `doctor123` | Dr. Priya Patel — Pediatrics (OP) [15 min] |
-| **Doctor 3** | `dr.desai@waitwise.com` | `doctor123` | Dr. Anita Desai — Dermatology (OP) [20 min] *(Visiting ward)* |
-| **Doctor 4** | `dr.rao@waitwise.com` | `doctor123` | Dr. Vikram Rao — Orthopedics (OP) [15 min] |
+| **Doctor 1** | `dr.sharma@waitwise.com` | `doctor123` | Dr. Rajesh Sharma — General Psychiatry |
+| **Doctor 2** | `dr.patel@waitwise.com` | `doctor123` | Dr. Priya Patel — General Psychiatry |
 | **Patient** | `patient@waitwise.com` | `patient123` | John Doe |
 
-*(New patients can also register directly via the Register page.)*
+*(New patients can also register directly via the Register page. Existing databases migrate the two default doctor accounts and retire the former extra seeded accounts without deleting their appointment history.)*
+
+### Clinic Session Times
+
+| Session | Appointment slots |
+|---|---|
+| FN (forenoon) | 9:00–10:00, 10:15–11:15, 11:30–12:30 |
+| AN (afternoon) | 13:30–14:30, 14:45–15:45, 16:00–17:00 |
 
 ---
 
@@ -85,5 +92,5 @@ Run the comprehensive end-to-end test suite:
 ```bash
 npm test
 ```
-All 13 system test cases covering authentication, 4-doctor limits, token generation, live tracking, and queue auto-updates run in-process and will report test results.
+The in-process suite covers authentication, the two-doctor limit, fixed session slots, invalid-slot rejection, token generation, live tracking, and queue auto-updates.
 

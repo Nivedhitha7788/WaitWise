@@ -31,7 +31,26 @@ function requireRole(role) {
 }
 
 const requireAdmin  = () => requireRole('admin');
-const requireDoctor = () => requireRole('doctor');
+const requireDoctor = () => [
+  authenticate,
+  async (req, res, next) => {
+    if (req.user.role !== 'doctor')
+      return res.status(403).json({ success: false, message: 'Access denied. doctor only.' });
+    try {
+      let doctor = null;
+      try {
+        doctor = await getCol('doctors').findOne({ _id: new ObjectId(req.user.id) });
+      } catch (e) {
+        doctor = await getCol('doctors').findOne({ _id: req.user.id });
+      }
+      if (!doctor || doctor.retired)
+        return res.status(401).json({ success: false, message: 'Doctor account is no longer active.' });
+      next();
+    } catch (err) {
+      next(err);
+    }
+  }
+];
 const requirePatient = () => requireRole('patient');
 
 module.exports = { authenticate, requireAdmin, requireDoctor, requirePatient };
