@@ -1,28 +1,28 @@
 const { MongoClient, ObjectId } = require('mongodb');
-const { LocalDB } = require('./localStore');
 const { seedInitialData } = require('./seedData');
 
 const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/waitwise';
 let client = null;
 let db = null;
-let isLocalFallback = false;
 
 async function connectDB() {
   if (db) return db;
 
+  client = new MongoClient(uri, {
+    serverSelectionTimeoutMS: 2000,
+    connectTimeoutMS: 2000
+  });
+
   try {
-    client = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 2000,
-      connectTimeoutMS: 2000
-    });
     await client.connect();
     db = client.db('waitwise');
-    console.log('✓ Connected to MongoDB on port 27017 (waitwise db)');
+    console.log('✓ Connected to MongoDB (waitwise database)');
   } catch (err) {
-    console.warn('! MongoDB connection on port 27017 unavailable (' + err.message + ').');
-    console.log('✓ Activating WaitWise resilient database engine for seamless operation.');
-    db = new LocalDB();
-    isLocalFallback = true;
+    await client.close().catch(closeError => {
+      console.error('Failed to close MongoDB client after connection error:', closeError.message);
+    });
+    client = null;
+    throw new Error(`Unable to connect to MongoDB: ${err.message}`, { cause: err });
   }
 
   // Seed default accounts and the fixed two-doctor psychiatry clinic.
@@ -40,4 +40,4 @@ function getCol(name) {
   return getDB().collection(name);
 }
 
-module.exports = { connectDB, getDB, getCol, ObjectId, isLocalFallback: () => isLocalFallback };
+module.exports = { connectDB, getDB, getCol, ObjectId };

@@ -109,4 +109,3 @@ async function seedInitialData(getCol) {
 }
 
 module.exports = { seedInitialData };
-
