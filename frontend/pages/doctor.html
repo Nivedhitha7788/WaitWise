@@ -129,7 +129,7 @@
     if (!guardPage('doctor')) throw new Error('redirect');
     renderNavbar('navbar');
 
-    $('#todayDate').textContent = new Date().toLocaleDateString('en-US', {
+    $('#todayDate').textContent = new Date().toLocaleDateString(I18n.locale, {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
 
@@ -177,7 +177,7 @@
         } else if (a.status === 'in-consultation') {
           actions = `<button class="btn btn-sm btn-success" onclick="completeApt('${a._id}')">✅ Complete</button>`;
         } else if (a.status === 'completed') {
-          actions = `<span style="font-size:12px; color:#10b981; font-weight:700;">✓ Done at ${a.completedAt ? new Date(a.completedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Today'}</span>`;
+          actions = `<span style="font-size:12px; color:#10b981; font-weight:700;">✓ Done at ${a.completedAt ? new Date(a.completedAt).toLocaleTimeString(I18n.locale, { hour: '2-digit', minute: '2-digit' }) : I18n.language === 'en' ? 'Today' : I18n.language === 'ta' ? 'இன்று' : 'आज'}</span>`;
         }
 
         return `
@@ -189,7 +189,7 @@
               <div>
                 <div style="font-family:var(--font-serif); font-weight:700; color:#ffffff; font-size:18px;">${p.name || 'Patient'}</div>
                 <div style="font-size:13px; color:var(--text-muted);">
-                  Slot: <b style="color:#fff;">${a.slot}</b> &bull; ${p.phone ? `Phone: ${p.phone}` : ''} ${p.age ? `(${p.age} yrs, ${p.gender || ''})` : ''}
+                  ${a.session || ''} Session: <b style="color:#fff;">${a.slot}</b> &bull; ${p.phone ? `Phone: ${p.phone}` : ''} ${p.age ? `(${p.age} yrs, ${p.gender || ''})` : ''}
                 </div>
                 ${a.notes ? `<div style="font-size:12px; color:var(--accent-orange); margin-top:2px;"><b>Clinical Notes:</b> ${a.notes}</div>` : ''}
               </div>
@@ -209,7 +209,7 @@
         doctorProfile = doctor;
         isAvailable = doctor.isAvailable;
         $('#docName').textContent = doctor.name;
-        $('#docSpec').textContent = `${doctor.specialization} &bull; ${doctor.consultationTime} min consultation slot duration`;
+        $('#docSpec').textContent = `${doctor.specialization} · ${doctor.consultationTime} min consultation slot duration`;
         updateAvailUI();
       } catch (e) {
         console.error(e);
@@ -304,7 +304,7 @@
               </div>
               <div>
                 <div style="font-family:var(--font-serif); font-size:19px; font-weight:700; color:#ffffff;">${p.name || 'Patient'}</div>
-                <div style="font-size:13px; color:var(--text-muted);">Slot: <b style="color:#fff;">${inConsultation.slot}</b> &bull; ${p.gender || ''} ${p.age ? `(${p.age} yrs)` : ''} ${p.phone ? `&bull; 📞 ${p.phone}` : ''}</div>
+                <div style="font-size:13px; color:var(--text-muted);">${inConsultation.session || ''} Session: <b style="color:#fff;">${inConsultation.slot}</b> &bull; ${p.gender || ''} ${p.age ? `(${p.age} yrs)` : ''} ${p.phone ? `&bull; 📞 ${p.phone}` : ''}</div>
               </div>
             </div>
           `;

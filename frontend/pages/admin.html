@@ -21,7 +21,7 @@
           <p style="font-size:14px; color:var(--text-muted); margin-top:2px;">Overall view of WaitWise outpatient system, doctors &amp; appointments</p>
         </div>
         <div style="display:flex; gap:10px;">
-          <button class="btn btn-outline btn-sm" id="seedBtn" title="Ensure database has admin and 4 OP doctors">🌱 Verify System Setup</button>
+          <button class="btn btn-outline btn-sm" id="seedBtn" title="Ensure database has admin and 2 psychiatry doctors">🌱 Verify System Setup</button>
           <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 Refresh Dashboard</button>
         </div>
       </div>
@@ -29,7 +29,7 @@
       <!-- Navigation Tabs (Besloor Orange Style) -->
       <div class="tabs">
         <button type="button" class="tab active" data-tab="overview">📊 Overall System View</button>
-        <button type="button" class="tab" data-tab="doctors">👨‍⚕️ OP Doctors Management (Max 4)</button>
+        <button type="button" class="tab" data-tab="doctors">👨‍⚕️ Psychiatry Doctors (Max 2)</button>
         <button type="button" class="tab" data-tab="appointments">📋 All Appointments &amp; Queues</button>
       </div>
 
@@ -42,7 +42,7 @@
           </div>
           <div class="stat-card" style="border-left-color: #10b981;">
             <div class="stat-icon">👨‍⚕️</div>
-            <div><div class="stat-value" id="s-doctors">0 / 4</div><div class="stat-label">OP Doctors (Max 4)</div></div>
+            <div><div class="stat-value" id="s-doctors">0 / 2</div><div class="stat-label">General Psychiatry Doctors (Max 2)</div></div>
           </div>
           <div class="stat-card" style="border-left-color: var(--cyan-glow);">
             <div class="stat-icon">📅</div>
@@ -75,20 +75,20 @@
 
         <div class="section-header">
           <div>
-            <h2 class="section-title">OP Hospital Doctors (<span id="docCount">0</span> of 4 slots filled)</h2>
+            <h2 class="section-title">Psychiatry Clinic Doctors (<span id="docCount">0</span> of 2 slots filled)</h2>
             <div class="orange-bar-left"></div>
-            <p class="section-subtitle">Only 4 doctors are permitted in the WaitWise hospital system.</p>
+            <p class="section-subtitle">The clinic has two General Psychiatry doctors, with fixed 60-minute appointments.</p>
           </div>
           <button class="btn btn-orange btn-sm" id="toggleDoctorFormBtn">+ Register Doctor</button>
         </div>
 
         <div id="maxDoctorWarn" class="alert alert-warn hidden" style="font-weight:600;">
-          ⚠️ Maximum limit of 4 doctors reached. To register another doctor, one existing doctor must be modified or removed.
+          ⚠️ Both doctor positions are filled. The psychiatry clinic supports a maximum of two doctors.
         </div>
 
         <!-- Register Doctor Form (Only accessible to Admin) -->
         <div id="doctorFormWrap" class="card hidden" style="margin-bottom:28px;">
-          <div class="section-title" style="margin-bottom:6px;">Register New OP Doctor</div>
+          <div class="section-title" style="margin-bottom:6px;">Register General Psychiatry Doctor</div>
           <div class="orange-bar-left"></div>
           <div id="regDoctorAlert"></div>
           <form id="regDoctorForm">
@@ -105,19 +105,13 @@
                 <label class="form-label">Password <span class="req">*</span></label>
                 <input class="form-input" type="password" id="d-pass" placeholder="Min 6 characters" required />
               </div>
-              <div class="form-group">
-                <label class="form-label">OP Specialization <span class="req">*</span></label>
-                <input class="form-input" type="text" id="d-spec" placeholder="e.g. ENT Specialist (OP)" required />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Fixed consultation schedule (Monday–Saturday)</span>
+              <div class="alert alert-info" style="font-size:13px;">
+                FN: 9:00–10:00, 10:15–11:15, 11:30–12:30<br />
+                AN: 1:30–2:30, 2:45–3:45, 4:00–5:00
               </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Consultation Slot Duration (minutes per patient)</label>
-              <input class="form-input" type="number" id="d-time" value="15" min="5" max="60" style="max-width:180px;" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Available Days &amp; Consultation Hours</label>
-              <div class="day-chips" id="dayChips"></div>
-              <div id="dayTimeInputs" style="margin-top:10px;"></div>
             </div>
             <button type="submit" class="btn btn-orange" id="regDoctorBtn">
               Register Doctor Into System &rarr;
@@ -140,7 +134,7 @@
             <div>
               <h2 class="section-title">All OP Patient Appointments &amp; Tokens</h2>
               <div class="orange-bar-left"></div>
-              <p class="section-subtitle">Real-time appointments directory across all 4 doctors</p>
+              <p class="section-subtitle">Real-time appointments directory across both clinic doctors</p>
             </div>
             <button class="btn btn-outline btn-sm" id="aptRefreshBtn">🔄 Refresh Queue</button>
           </div>
@@ -168,16 +162,6 @@
     if (!guardPage('admin')) throw new Error('redirect');
     renderNavbar('navbar');
 
-    const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    let selectedDaySlots = {
-      Monday: { startTime: '09:00', endTime: '13:00' },
-      Tuesday: { startTime: '09:00', endTime: '13:00' },
-      Wednesday: { startTime: '09:00', endTime: '13:00' },
-      Thursday: { startTime: '09:00', endTime: '13:00' },
-      Friday: { startTime: '09:00', endTime: '13:00' },
-      Saturday: { startTime: '09:00', endTime: '13:00' }
-    };
-
     $$('.tab').forEach(t => {
       t.onclick = () => {
         $$('.tab').forEach(x => x.classList.remove('active'));
@@ -188,58 +172,6 @@
         if (t.dataset.tab === 'appointments') loadAppointments();
       };
     });
-
-    function buildDayChips() {
-      const container = $('#dayChips');
-      container.innerHTML = '';
-      DAYS.forEach(day => {
-        const chip = el('button', 'day-chip', day.slice(0,3));
-        chip.type = 'button';
-        chip.dataset.day = day;
-        chip.onclick = () => toggleDay(day);
-        container.appendChild(chip);
-      });
-      renderDayChips();
-      renderDayTimeInputs();
-    }
-
-    function toggleDay(day) {
-      if (selectedDaySlots[day]) {
-        delete selectedDaySlots[day];
-      } else {
-        selectedDaySlots[day] = { startTime: '09:00', endTime: '13:00' };
-      }
-      renderDayChips();
-      renderDayTimeInputs();
-    }
-
-    function renderDayChips() {
-      $$('.day-chip').forEach(chip => {
-        chip.classList.toggle('selected', !!selectedDaySlots[chip.dataset.day]);
-      });
-    }
-
-    function renderDayTimeInputs() {
-      const wrap = $('#dayTimeInputs');
-      wrap.innerHTML = '';
-      Object.entries(selectedDaySlots).forEach(([day, times]) => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;background:rgba(0,0,0,0.25);border-radius:2px;padding:8px 12px;flex-wrap:wrap;border:1px solid var(--border-light);';
-        row.innerHTML = `
-          <span style="font-family:var(--font-serif);font-weight:700;color:var(--accent-orange);min-width:85px;font-size:13px">${day}</span>
-          <span style="font-size:13px;color:#94a3b8">From</span>
-          <input class="form-input" type="time" value="${times.startTime}" style="max-width:120px" data-day="${day}" data-field="startTime"/>
-          <span style="font-size:13px;color:#94a3b8">To</span>
-          <input class="form-input" type="time" value="${times.endTime}" style="max-width:120px" data-day="${day}" data-field="endTime"/>
-        `;
-        row.querySelectorAll('input[type=time]').forEach(inp => {
-          inp.onchange = () => { selectedDaySlots[inp.dataset.day][inp.dataset.field] = inp.value; };
-        });
-        wrap.appendChild(row);
-      });
-    }
-
-    buildDayChips();
 
     $('#toggleDoctorFormBtn').onclick = () => {
       const wrap = $('#doctorFormWrap');
@@ -255,18 +187,11 @@
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span> Registering...';
 
-      const availableSlots = Object.entries(selectedDaySlots).map(([day, t]) => ({
-        day, startTime: t.startTime, endTime: t.endTime
-      }));
-
       try {
         await api('POST', '/api/admin/register-doctor', {
           name: $('#d-name').value.trim(),
           email: $('#d-email').value.trim(),
-          password: $('#d-pass').value,
-          specialization: $('#d-spec').value.trim(),
-          consultationTime: Number($('#d-time').value),
-          availableSlots
+          password: $('#d-pass').value
         });
         showAlert($('#docFormAlert'), 'success', '✅ OP Doctor registered successfully into the system!');
         $('#doctorFormWrap').classList.add('hidden');
@@ -286,7 +211,7 @@
       try {
         const { data } = await api('GET', '/api/admin/dashboard');
         $('#s-patients').textContent = data.totalPatients;
-        $('#s-doctors').textContent  = `${data.totalDoctors} / 4`;
+        $('#s-doctors').textContent  = `${data.totalDoctors} / 2`;
         $('#s-today').textContent    = data.todayAppointments;
         $('#s-waiting').textContent  = data.waitingCount;
         $('#s-incon').textContent    = data.inConsultationCount;
@@ -301,7 +226,7 @@
         const { doctors } = await api('GET', '/api/admin/doctors');
         $('#docCount').textContent = doctors.length;
 
-        const isMax = doctors.length >= 4;
+        const isMax = doctors.length >= 2;
         $('#maxDoctorWarn').classList.toggle('hidden', !isMax);
         const toggleBtn = $('#toggleDoctorFormBtn');
         toggleBtn.disabled = isMax;
@@ -401,7 +326,7 @@
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>Token</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Slot</th><th>Status</th><th>Wait / Completed</th>
+                <th>Token</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Session / Slot</th><th>Status</th><th>Wait / Completed</th>
               </tr></thead>
               <tbody>${appointments.map(a => `
                 <tr>
@@ -409,9 +334,9 @@
                   <td><div style="font-weight:700; color:#ffffff;">${a.patient?.name || 'Patient'}</div><div style="font-size:12px; color:#64748b;">${a.patient?.phone || a.patient?.email || ''}</div></td>
                   <td><div style="font-family:var(--font-serif); font-weight:700;">${a.doctor?.name || 'Doctor'}</div><div style="font-size:12px; color:var(--accent-orange);">${a.doctor?.specialization || ''}</div></td>
                   <td>${fmtDate(a.appointmentDate)}</td>
-                  <td><b>${a.slot}</b></td>
+                  <td><b>${a.session || ''} Session · ${a.slot}</b></td>
                   <td>${statusBadge(a.status)}</td>
-                  <td><span style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}` : a.status === 'waiting' ? `Est. ${a.estimatedWaitTime} min` : 'Active'}</span></td>
+                  <td><span style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString(I18n.locale,{hour:'2-digit',minute:'2-digit'})}` : a.status === 'waiting' ? `Est. ${a.estimatedWaitTime} min` : 'Active'}</span></td>
                 </tr>
               `).join('')}</tbody>
             </table>
