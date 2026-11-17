@@ -95,6 +95,12 @@ async function verifyAll() {
   });
   console.log('Admin login status:', adminLog.statusCode, 'User:', adminLog.body.user);
   const adminToken = adminLog.body.token;
+  const savedAdmin = await usersCol.findOne({ email: 'admin@waitwise.com' });
+  assert(savedAdmin);
+  assert.strictEqual(savedAdmin.name, 'Hospital Administrator');
+  assert.strictEqual(savedAdmin.role, 'admin');
+  assert.strictEqual(savedAdmin.phone, '1800-WAITWISE');
+  assert.notStrictEqual(savedAdmin.password, 'admin123');
 
   console.log('\n=== TEST 4: TWO-DOCTOR PSYCHIATRY DIRECTORY ===');
   const docsRes = await mockRequest(app, 'GET', '/api/admin/doctors', null, {
@@ -108,8 +114,22 @@ async function verifyAll() {
     assert.strictEqual(d.specialization, 'General Psychiatry');
     assert.strictEqual(d.consultationTime, 60);
   });
+  const savedDoctor = await doctorsCol.findOne({ email: 'dr.sharma@waitwise.com' });
+  assert(savedDoctor);
+  assert.strictEqual(savedDoctor.name, 'Dr. Rajesh Sharma');
+  assert.strictEqual(savedDoctor.retired, false);
+  assert.strictEqual(savedDoctor.availableSlots.length, 6);
+  assert.notStrictEqual(savedDoctor.password, 'doctor123');
 
   console.log('\n=== TEST 5: STRICT TWO-DOCTOR LIMIT ENFORCEMENT ===');
+  const shortDoctorPassword = await mockRequest(app, 'POST', '/api/admin/register-doctor', {
+    name: 'Dr. Short Password',
+    email: 'short-password@waitwise.com',
+    password: '12345'
+  }, { authorization: `Bearer ${adminToken}` });
+  assert.strictEqual(shortDoctorPassword.statusCode, 400);
+  assert.strictEqual(shortDoctorPassword.body.message, 'Password must be at least 6 characters.');
+
   const fifthDoctor = await mockRequest(app, 'POST', '/api/admin/register-doctor', {
     name: 'Dr. Extra Doc',
     email: 'extra@waitwise.com',
@@ -122,9 +142,20 @@ async function verifyAll() {
   const registration = await mockRequest(app, 'POST', '/api/auth/register', {
     name: 'WaitWise Integration Patient',
     email: testEmail,
-    password: 'patient123'
+    password: 'patient123',
+    phone: '+91 98765 43210',
+    age: 32,
+    gender: 'Other'
   });
   assert.strictEqual(registration.statusCode, 201);
+  const savedPatient = await usersCol.findOne({ email: testEmail });
+  assert(savedPatient);
+  assert.strictEqual(savedPatient.name, 'WaitWise Integration Patient');
+  assert.strictEqual(savedPatient.role, 'patient');
+  assert.strictEqual(savedPatient.phone, '+91 98765 43210');
+  assert.strictEqual(savedPatient.age, 32);
+  assert.strictEqual(savedPatient.gender, 'Other');
+  assert.notStrictEqual(savedPatient.password, 'patient123');
   const patientLog = await mockRequest(app, 'POST', '/api/auth/login', {
     email: testEmail,
     password: 'patient123',
@@ -196,6 +227,15 @@ async function verifyAll() {
   assert.strictEqual(bookRes.statusCode, 201);
   assert.strictEqual(bookRes.body.appointment.session, 'FN');
   const appointmentId = bookRes.body.appointment._id;
+  const savedAppointment = await appointmentsCol.findOne({
+    patientId: String(testPatientId),
+    doctorId: String(targetDoctor._id),
+    slot: chosenSlot
+  });
+  assert(savedAppointment);
+  assert.strictEqual(savedAppointment.session, 'FN');
+  assert.strictEqual(savedAppointment.status, 'waiting');
+  assert.strictEqual(savedAppointment.tokenNumber, bookRes.body.appointment.tokenNumber);
 
   console.log('\n=== TEST 8: REAL-TIME TOKEN TRACKING (PATIENT VIEW) ===');
   const trackRes = await mockRequest(app, 'GET', `/api/patient/token/${appointmentId}`, null, {
@@ -241,6 +281,10 @@ async function verifyAll() {
     notes: 'Prescribed anti-histamine, symptoms mild.'
   }, { authorization: `Bearer ${doctorToken}` });
   console.log('Consultation complete response:', completeRes.body.message);
+  const completedAppointment = await appointmentsCol.findOne({ _id: savedAppointment._id });
+  assert.strictEqual(completedAppointment.status, 'completed');
+  assert.strictEqual(completedAppointment.notes, 'Prescribed anti-histamine, symptoms mild.');
+  assert(completedAppointment.completedAt instanceof Date);
 
   const docQueueAfter = await mockRequest(app, 'GET', '/api/doctor/queue', null, {
     authorization: `Bearer ${doctorToken}`
@@ -253,6 +297,9 @@ async function verifyAll() {
     unavailabilityReason: 'Visiting existing patients in ward (In-Patient rounds)'
   }, { authorization: `Bearer ${doctorToken}` });
   console.log('Doctor availability toggle:', toggleAvail.body);
+  const updatedDoctor = await doctorsCol.findOne({ _id: savedDoctor._id });
+  assert.strictEqual(updatedDoctor.isAvailable, false);
+  assert.strictEqual(updatedDoctor.unavailabilityReason, 'Visiting existing patients in ward (In-Patient rounds)');
 
   console.log('\n=== TEST 13: ADMIN OVERALL VIEW ===');
   const adminDash = await mockRequest(app, 'GET', '/api/admin/dashboard', null, {

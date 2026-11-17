@@ -69,17 +69,20 @@ router.post('/register-doctor', requireAdmin(), async (req, res) => {
     const doctors = getCol('doctors');
     const users   = getCol('users');
 
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+
     const count = await doctors.countDocuments({ retired: { $ne: true } });
     if (count >= MAX_DOCTORS) {
       return res.status(400).json({
         success: false,
         message: `Maximum doctor limit reached. The psychiatry clinic is configured for ${MAX_DOCTORS} doctors.`
       });
-    }
-
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
     }
 
     const lowerEmail = email.toLowerCase().trim();

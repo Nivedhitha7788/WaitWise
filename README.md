@@ -20,6 +20,12 @@
 - **Ward Visits Status:** Doctors can mark themselves unavailable with reasons such as *"Visiting existing patients in ward (In-Patient rounds)"*.
 - **MongoDB Persistence:** Patient registrations, appointments, doctor availability, consultation notes, and system data are stored in MongoDB. The server will not start if MongoDB is unavailable, preventing data from being silently written to a different store.
 
+### MongoDB Data
+
+- **Users:** Patient profile fields (`name`, `email`, `phone`, `age`, `gender`), role, and a hashed password. The seeded admin account stores its name, email, role, phone, and hashed password.
+- **Doctors:** Name, email, hashed password, specialization, consultation duration, weekly availability slots, current availability and reason, registration metadata, and creation time.
+- **Appointments:** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait, status, booking/completion timestamps, and consultation notes.
+
 ---
 
 ## 👥 User Roles & Access
@@ -94,7 +100,4 @@ Run the comprehensive end-to-end test suite:
 ```bash
 npm test
 ```
-<<<<<<< HEAD
-The in-process test suite covers authentication, the two-doctor limit, fixed session slots, invalid-slot rejection, token generation, live tracking, and queue auto-updates.
-
->>>>>>> origin/main
+The in-process test suite covers authentication, MongoDB persistence for all roles and appointments, the two-doctor limit, fixed session slots, invalid-slot rejection, token generation, live tracking, and queue auto-updates.
