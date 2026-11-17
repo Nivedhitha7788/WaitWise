@@ -116,6 +116,7 @@
     <ul class="footer-links">
       <li><a href="/">Home</a></li>
       <li><a href="/pages/display.html">Queue Board</a></li>
+      <li><a href="/pages/contact.html">Contact</a></li>
       <li><a href="/pages/login.html?role=doctor">Doctor Access</a></li>
     </ul>
   </footer>
@@ -191,17 +192,21 @@
         const res = await api('GET', '/api/patient/doctors/all');
         doctors = res.doctors || [];
         const sel = $('#doctorSelect');
+        const selectedDoctor = sel.value;
 
         if (!doctors.length) {
-          sel.innerHTML = '<option value="">No doctors available yet</option>';
+          sel.innerHTML = `<option value="">${I18n.t('No doctors available yet')}</option>`;
           return;
         }
 
-        sel.innerHTML = `<option value="">— Select an OP Doctor —</option>` +
+        sel.innerHTML = `<option value="">${I18n.t('— Select an OP Doctor —')}</option>` +
           doctors.map(d => {
-            const availText = d.isAvailable ? '✓ Available' : `⚠️ Unavailable (${d.unavailabilityReason || 'Visiting ward'})`;
-            return `<option value="${d._id}">${d.name} — ${d.specialization} [${availText}]</option>`;
+            const availText = I18n.t(d.isAvailable ? '✓ Available' : '⚠️ Unavailable');
+            const reason = I18n.t(d.unavailabilityReason || 'Visiting ward');
+            const availability = d.isAvailable ? availText : `${availText} (${reason})`;
+            return `<option value="${d._id}">${d.name} — ${I18n.t(d.specialization)} [${availability}]</option>`;
           }).join('');
+        sel.value = selectedDoctor;
       } catch (err) {
         console.error(err);
       }
@@ -380,6 +385,35 @@
                   <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Hospital Entry</span><span style="color:#10b981;font-weight:700;">Remain Off-Site Until Turn</span></div>
                 </div>
               ` : ''}
+              ${a.status === 'completed' ? `
+                <div class="feedback-panel">
+                  ${a.feedback ? `
+                    <p class="feedback-thanks">Thank you for your feedback!</p>
+                    <div class="feedback-stars" aria-label="${a.feedback.rating} out of 5 stars">${'★'.repeat(a.feedback.rating)}${'☆'.repeat(5 - a.feedback.rating)}</div>
+                    <p class="feedback-comment">${escapeHTML(a.feedback.comment)}</p>
+                  ` : `
+                    <h3>Rate your visit</h3>
+                    <p>Your feedback helps us improve our care.</p>
+                    <form class="feedback-form" data-appointment-id="${a._id}">
+                      <fieldset class="rating-fieldset">
+                        <legend>Your rating</legend>
+                        <div class="rating-stars">
+                          ${[1, 2, 3, 4, 5].map(value => `
+                            <label>
+                              <input type="radio" name="rating" value="${value}" required />
+                              <span aria-label="${value} stars">★</span>
+                            </label>
+                          `).join('')}
+                        </div>
+                      </fieldset>
+                      <label class="form-label" for="feedback-${a._id}">Comment</label>
+                      <textarea class="form-input" id="feedback-${a._id}" name="comment" rows="3" maxlength="2000" required placeholder="Tell us about your visit"></textarea>
+                      <button class="btn btn-orange btn-sm" type="submit">Submit feedback</button>
+                      <div class="feedback-alert" aria-live="polite"></div>
+                    </form>
+                  `}
+                </div>
+              ` : ''}
             </div>
           `;
         }).join('');
@@ -387,6 +421,28 @@
         wrap.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
       }
     }
+
+    $('#aptsList').addEventListener('submit', async e => {
+      const form = e.target.closest('.feedback-form');
+      if (!form) return;
+      e.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      const alert = form.querySelector('.feedback-alert');
+      button.disabled = true;
+      try {
+        const rating = form.querySelector('input[name="rating"]:checked');
+        if (!rating) throw new Error('Please select a star rating.');
+        await api('POST', '/api/patient/feedback', {
+          appointmentId: form.dataset.appointmentId,
+          rating: Number(rating.value),
+          comment: form.elements.comment.value
+        });
+        await loadMyAppointments();
+      } catch (err) {
+        showAlert(alert, 'error', err.message);
+        button.disabled = false;
+      }
+    });
 
     async function cancelApt(id) {
       if (!confirm('Cancel this appointment token?')) return;
@@ -498,6 +554,7 @@
     $('#refreshTokenBtn').onclick = () => { fetchTokenStatus(); trackerCountdown = 10; };
     $('#refreshAptsBtn').onclick = loadMyAppointments;
 
+    I18n.onChange(loadDoctors);
     loadDoctors();
     loadMyAppointments();
   </script>

@@ -71,9 +71,12 @@ async function verifyAll() {
   const appointmentsCol = getCol('appointments');
   const doctorsCol = getCol('doctors');
   const usersCol = getCol('users');
+  const feedbackCol = getCol('feedback');
+  const contactMessagesCol = getCol('contactMessages');
   const doctorEmail = 'dr.sharma@waitwise.com';
   const originalDoctor = await doctorsCol.findOne({ email: doctorEmail });
   const testEmail = `waitwise-test-${Date.now()}@example.com`;
+  const contactEmail = `waitwise-contact-${Date.now()}@example.com`;
   let testPatientId = null;
   try {
   await doctorsCol.updateOne({ email: 'dr.sharma@waitwise.com' }, { $set: { isAvailable: true, unavailabilityReason: '' } });
@@ -179,6 +182,24 @@ async function verifyAll() {
   const patientToken = patientLog.body.token;
   testPatientId = patientLog.body.user.id;
 
+  console.log('\n=== TEST 6A: PUBLIC CONTACT FORM ===');
+  const contactMessage = await mockRequest(app, 'POST', '/api/patient/contact', {
+    name: 'WaitWise Contact Test',
+    email: contactEmail,
+    phone: '555-0100',
+    subject: 'Appointment question',
+    message: 'Please contact me about my appointment.'
+  });
+  assert.strictEqual(contactMessage.statusCode, 201);
+  assert.strictEqual(await contactMessagesCol.countDocuments({ email: contactEmail }), 1);
+  const invalidContact = await mockRequest(app, 'POST', '/api/patient/contact', {
+    name: 'Invalid Contact',
+    email: 'not-an-email',
+    subject: 'Question',
+    message: 'Hello'
+  });
+  assert.strictEqual(invalidContact.statusCode, 400);
+
   console.log('\n=== TEST 7: BOOK OP CONSULTATION & TOKEN GENERATION ===');
   const targetDoctor = docsRes.body.doctors.find(d => d.email === 'dr.sharma@waitwise.com');
   let appointmentDate = null;
@@ -256,6 +277,12 @@ async function verifyAll() {
     authorization: `Bearer ${patientToken}`
   });
   console.log('Token tracker status:', trackRes.body.token);
+  const earlyFeedback = await mockRequest(app, 'POST', '/api/patient/feedback', {
+    appointmentId,
+    rating: 5,
+    comment: 'Great care.'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(earlyFeedback.statusCode, 400);
 
   console.log('\n=== TEST 9: DOCTOR DIRECT LOGIN & QUEUE MANAGEMENT ===');
   const doctorLog = await mockRequest(app, 'POST', '/api/auth/login', {
@@ -300,6 +327,24 @@ async function verifyAll() {
   assert.strictEqual(completedAppointment.notes, 'Prescribed anti-histamine, symptoms mild.');
   assert(completedAppointment.completedAt instanceof Date);
 
+  console.log('\n=== TEST 11A: PATIENT FEEDBACK AFTER COMPLETED VISIT ===');
+  const feedbackRes = await mockRequest(app, 'POST', '/api/patient/feedback', {
+    appointmentId,
+    rating: 5,
+    comment: 'The consultation was helpful.'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(feedbackRes.statusCode, 201);
+  const duplicateFeedback = await mockRequest(app, 'POST', '/api/patient/feedback', {
+    appointmentId,
+    rating: 4,
+    comment: 'Another rating.'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(duplicateFeedback.statusCode, 409);
+  const patientAppointments = await mockRequest(app, 'GET', '/api/patient/appointments', null, {
+    authorization: `Bearer ${patientToken}`
+  });
+  assert.strictEqual(patientAppointments.body.appointments.find(item => String(item._id) === String(appointmentId)).feedback.rating, 5);
+
   const docQueueAfter = await mockRequest(app, 'GET', '/api/doctor/queue', null, {
     authorization: `Bearer ${doctorToken}`
   });
@@ -327,8 +372,10 @@ async function verifyAll() {
   } finally {
     if (testPatientId) {
       await appointmentsCol.deleteMany({ patientId: String(testPatientId) });
+      await feedbackCol.deleteMany({ patientId: String(testPatientId) });
     }
     await usersCol.deleteMany({ email: testEmail });
+    await contactMessagesCol.deleteMany({ email: contactEmail });
     if (originalDoctor) {
       await doctorsCol.updateOne(
         { _id: originalDoctor._id },

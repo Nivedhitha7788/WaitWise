@@ -27,6 +27,7 @@ async function connectDB() {
 
   // Seed default accounts and the fixed two-doctor psychiatry clinic.
   await seedInitialData(getCol);
+  await getCol('feedback').createIndex({ appointmentId: 1 }, { unique: true });
 
   return db;
 }

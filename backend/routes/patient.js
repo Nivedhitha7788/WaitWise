@@ -5,6 +5,92 @@ const { requirePatient } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
 const { SESSION_SLOTS, isPastClinicSlot } = require('../utils/clinicConfig');
 
+// POST /api/patient/contact — public contact form
+router.post('/contact', async (req, res) => {
+  try {
+    const { name, email, phone, subject, message } = req.body || {};
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ success: false, message: 'Name, email, subject, and message are required.' });
+    }
+
+    const contact = {
+      name: String(name).trim(),
+      email: String(email).trim().toLowerCase(),
+      phone: phone ? String(phone).trim() : '',
+      subject: String(subject).trim(),
+      message: String(message).trim()
+    };
+    if (!contact.name || contact.name.length > 120 ||
+        contact.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email) ||
+        contact.phone.length > 40 || !contact.subject || contact.subject.length > 150 ||
+        !contact.message || contact.message.length > 3000) {
+      return res.status(400).json({ success: false, message: 'Please provide valid contact details and a message within the allowed length.' });
+    }
+
+    await getCol('contactMessages').insertOne({ ...contact, submittedAt: new Date(), status: 'new' });
+    res.status(201).json({ success: true, message: 'Your message has been received. We will be in touch soon.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error saving your message.' });
+  }
+});
+
+// POST /api/patient/feedback — submit feedback for a completed appointment
+router.post('/feedback', requirePatient(), async (req, res) => {
+  try {
+    const { appointmentId, rating, comment } = req.body || {};
+    const parsedRating = Number(rating);
+    const feedbackComment = typeof comment === 'string' ? comment.trim() : '';
+    if (!appointmentId || !Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5 ||
+        !feedbackComment || feedbackComment.length > 2000) {
+      return res.status(400).json({ success: false, message: 'A rating from 1 to 5 and a comment of up to 2000 characters are required.' });
+    }
+
+    const appointments = getCol('appointments');
+    let appointment = null;
+    try {
+      appointment = await appointments.findOne({
+        _id: new ObjectId(String(appointmentId)),
+        patientId: String(req.user.id)
+      });
+    } catch (e) {
+      appointment = await appointments.findOne({
+        _id: String(appointmentId),
+        patientId: String(req.user.id)
+      });
+    }
+
+    if (!appointment) return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    if (appointment.status !== 'completed') {
+      return res.status(400).json({ success: false, message: 'Feedback is available after the consultation is completed.' });
+    }
+
+    const feedbacks = getCol('feedback');
+    const existing = await feedbacks.findOne({ appointmentId: String(appointment._id) });
+    if (existing) return res.status(409).json({ success: false, message: 'Feedback has already been submitted for this appointment.' });
+
+    try {
+      await feedbacks.insertOne({
+        appointmentId: String(appointment._id),
+        patientId: String(req.user.id),
+        doctorId: String(appointment.doctorId),
+        rating: parsedRating,
+        comment: feedbackComment,
+        submittedAt: new Date()
+      });
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(409).json({ success: false, message: 'Feedback has already been submitted for this appointment.' });
+      }
+      throw err;
+    }
+    res.status(201).json({ success: true, message: 'Thank you for sharing your feedback.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error saving feedback.' });
+  }
+});
+
 function getDaySessions(doctor, dayName) {
   const schedule = (doctor.availableSlots || []).find(item => item.day === dayName);
   if (!schedule) return [];
@@ -283,6 +369,8 @@ router.get('/appointments', requirePatient(), async (req, res) => {
     const doctors = getCol('doctors');
 
     const apts = await appointments.find({ patientId: String(req.user.id) }).sort({ bookedAt: -1 }).toArray();
+    const savedFeedback = await getCol('feedback').find({ patientId: String(req.user.id) }).toArray();
+    const feedbackByAppointment = new Map(savedFeedback.map(item => [String(item.appointmentId), item]));
     const enriched = await Promise.all(apts.map(async a => {
       let doctor = null;
       try {
@@ -290,7 +378,7 @@ router.get('/appointments', requirePatient(), async (req, res) => {
       } catch (e) {
         doctor = await doctors.findOne({ _id: String(a.doctorId) }, { projection: { password: 0 } });
       }
-      return { ...a, doctor };
+      return { ...a, doctor, feedback: feedbackByAppointment.get(String(a._id)) || null };
     }));
     res.json({ success: true, appointments: enriched });
   } catch (err) {

@@ -11,7 +11,8 @@
 - **Strictly OP (Outpatient) Consultations:** Emergency cases are explicitly guided to the Emergency & Trauma Ward.
 - **Psychiatry Clinic:** The clinic has exactly two active doctors, both configured for General Psychiatry.
 - **Fixed Appointment Sessions:** Monday–Saturday appointments use FN (forenoon) and AN (afternoon) sessions, with six fixed one-hour appointments per doctor per day. Past same-day appointments are hidden and rejected using the clinic's Asia/Kolkata time.
-- **Multilingual Interface:** Use the language selector to switch between English, Tamil, and Hindi; the choice is saved in the browser.
+- **Multilingual Interface:** Use the language selector to switch between English, Tamil, and Hindi; the choice is saved in the browser and shared across pages.
+- **Contact & Patient Feedback:** Visitors can send contact requests saved in MongoDB, and patients can rate and comment on completed consultations.
 - **Real-Time Digital Token Lifecycle:** 
   - Token generated on slot reservation.
   - Frequent live tracking (auto-updates every 10 seconds).
@@ -36,6 +37,12 @@
 - **Digital Token Generation:** Instant issuance of Token Number with initial queue position and estimated wait time.
 - **Frequent Token Tracking:** Live visual progress bar, real-time patients ahead countdown, current room occupant, and audio/banner alerts when turn arrives.
 - **Queue Auto-Update:** As doctors finish with patients, the queue automatically advances.
+- **Visit Feedback:** Patients can submit one 1–5 star rating and comment after a visit is marked completed.
+
+### Contact
+- Visit `/pages/contact.html` for the clinic contact details and public contact form.
+- Contact submissions are stored in the `contactMessages` collection.
+- Patient ratings and comments are stored in the `feedback` collection and are linked to the completed appointment.
 
 ### 2. 👨‍⚕️ Doctor Interface
 - **Direct Login:** Accessible directly from the homepage and navbar (`/pages/login.html?role=doctor`).
