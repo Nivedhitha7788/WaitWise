@@ -114,12 +114,26 @@ async function verifyAll() {
     assert.strictEqual(d.specialization, 'General Psychiatry');
     assert.strictEqual(d.consultationTime, 60);
   });
-  const savedDoctor = await doctorsCol.findOne({ email: 'dr.sharma@waitwise.com' });
+  const savedDoctors = await doctorsCol.find({ retired: { $ne: true } }).toArray();
+  assert.strictEqual(savedDoctors.length, 2);
+  assert.deepStrictEqual(
+    savedDoctors.map(doctor => doctor.email).sort(),
+    ['dr.patel@waitwise.com', 'dr.sharma@waitwise.com']
+  );
+  savedDoctors.forEach(doctor => {
+    assert.strictEqual(doctor.retired, false);
+    assert.strictEqual(doctor.specialization, 'General Psychiatry');
+    assert.strictEqual(doctor.consultationTime, 60);
+    assert.strictEqual(typeof doctor.isAvailable, 'boolean');
+    assert.strictEqual(typeof doctor.unavailabilityReason, 'string');
+    assert.strictEqual(doctor.availableSlots.length, 6);
+    assert(doctor.availableSlots.every(day => day.sessions.length === 2));
+    assert.notStrictEqual(doctor.password, 'doctor123');
+  });
+  const savedDoctor = savedDoctors.find(doctor => doctor.email === 'dr.sharma@waitwise.com');
   assert(savedDoctor);
   assert.strictEqual(savedDoctor.name, 'Dr. Rajesh Sharma');
-  assert.strictEqual(savedDoctor.retired, false);
-  assert.strictEqual(savedDoctor.availableSlots.length, 6);
-  assert.notStrictEqual(savedDoctor.password, 'doctor123');
+  assert.strictEqual(savedDoctors.find(doctor => doctor.email === 'dr.patel@waitwise.com').name, 'Dr. Priya Patel');
 
   console.log('\n=== TEST 5: STRICT TWO-DOCTOR LIMIT ENFORCEMENT ===');
   const shortDoctorPassword = await mockRequest(app, 'POST', '/api/admin/register-doctor', {
