@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { ObjectId, getCol } = require('../db/connection');
+const { ObjectId, getCol, getDoctorCol } = require('../db/connection');
 const { requirePatient } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
-const { SESSION_SLOTS, isPastClinicSlot } = require('../utils/clinicConfig');
+const { SESSION_SLOTS, isPastClinicSlot, CONSULTATION_MINUTES } = require('../utils/clinicConfig');
+const { findAppointmentsAcrossDoctors, findAppointmentAcrossDoctors } = require('../utils/appointmentStore');
+const { calculateEstimatedWaitTime, refreshEstimatedWaitTime } = require('../utils/waitTime');
 
 // POST /api/patient/contact — public contact form
 router.post('/contact', async (req, res) => {
@@ -46,19 +48,9 @@ router.post('/feedback', requirePatient(), async (req, res) => {
       return res.status(400).json({ success: false, message: 'A rating from 1 to 5 and a comment of up to 2000 characters are required.' });
     }
 
-    const appointments = getCol('appointments');
-    let appointment = null;
-    try {
-      appointment = await appointments.findOne({
-        _id: new ObjectId(String(appointmentId)),
-        patientId: String(req.user.id)
-      });
-    } catch (e) {
-      appointment = await appointments.findOne({
-        _id: String(appointmentId),
-        patientId: String(req.user.id)
-      });
-    }
+    const appointment = await findAppointmentAcrossDoctors(appointmentId, {
+      patientId: String(req.user.id)
+    });
 
     if (!appointment) return res.status(404).json({ success: false, message: 'Appointment not found.' });
     if (appointment.status !== 'completed') {
@@ -101,29 +93,26 @@ function getDaySessions(doctor, dayName) {
 }
 
 async function recalculateQueue(doctorId, appointmentDate) {
-  const appointments = getCol('appointments');
-  const doctors = getCol('doctors');
+  const appointments = getDoctorCol(doctorId, 'appointments');
   const { start, end } = getDayRange(appointmentDate);
-
   const docIdStr = String(doctorId);
-  let doctor = null;
-  try {
-    doctor = await doctors.findOne({ _id: new ObjectId(docIdStr) });
-  } catch (e) {
-    doctor = await doctors.findOne({ _id: docIdStr });
-  }
-  const consultationTime = doctor ? doctor.consultationTime : 15;
 
   const waiting = await appointments.find({
     doctorId: docIdStr,
     appointmentDate: { $gte: start, $lte: end },
     status: 'waiting'
   }).sort({ tokenNumber: 1 }).toArray();
+  const activeConsultation = await appointments.findOne({
+    doctorId: docIdStr,
+    appointmentDate: { $gte: start, $lte: end },
+    status: 'in-consultation'
+  });
 
   for (let i = 0; i < waiting.length; i++) {
+    const estimatedWaitTime = calculateEstimatedWaitTime(waiting[i], i, activeConsultation);
     await appointments.updateOne(
       { _id: waiting[i]._id },
-      { $set: { queuePosition: i + 1, estimatedWaitTime: i * consultationTime } }
+      { $set: { queuePosition: i + 1, estimatedWaitTime } }
     );
   }
 }
@@ -132,12 +121,12 @@ async function recalculateQueue(doctorId, appointmentDate) {
 router.get('/public/display', async (req, res) => {
   try {
     const doctors = getCol('doctors');
-    const appointments = getCol('appointments');
     const { start, end } = getDayRange(new Date());
 
     const allDoctors = await doctors.find({ retired: { $ne: true } }, { projection: { password: 0 } }).toArray();
 
     const boards = await Promise.all(allDoctors.map(async doc => {
+      const appointments = getDoctorCol(doc._id, 'appointments');
       const docIdStr = String(doc._id);
 
       // Find current in-consultation token
@@ -232,7 +221,7 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
     const allSlots = sessions.flatMap(session => session.slots);
     const { start, end } = getDayRange(date);
 
-    const booked = await getCol('appointments').find({
+    const booked = await getDoctorCol(docIdStr, 'appointments').find({
       doctorId: docIdStr,
       appointmentDate: { $gte: start, $lte: end },
       status: { $ne: 'cancelled' }
@@ -262,7 +251,6 @@ router.post('/book', requirePatient(), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Doctor, date, and slot are required.' });
 
     const docIdStr = String(doctorId);
-    const appointments = getCol('appointments');
     const doctors = getCol('doctors');
 
     let doctor = null;
@@ -273,6 +261,7 @@ router.post('/book', requirePatient(), async (req, res) => {
     }
 
     if (!doctor || doctor.retired) return res.status(404).json({ success: false, message: 'Doctor not found.' });
+    const appointments = getDoctorCol(docIdStr, 'appointments');
     if (!doctor.isAvailable) {
       const reason = doctor.unavailabilityReason || 'Doctor is currently visiting existing patients in ward';
       return res.status(400).json({ success: false, message: `Doctor is currently unavailable: ${reason}` });
@@ -324,7 +313,21 @@ router.post('/book', requirePatient(), async (req, res) => {
       tokenNumber: { $lt: tokenNumber }
     });
     const queuePosition = ahead + 1;
-    const estimatedWaitTime = ahead * doctor.consultationTime;
+    const activeConsultation = await appointments.findOne({
+      doctorId: docIdStr,
+      appointmentDate: { $gte: start, $lte: end },
+      status: 'in-consultation'
+    });
+    const consultationDurationMinutes = Number(doctor.consultationTime) || CONSULTATION_MINUTES;
+    const appointment = {
+      doctorId: docIdStr,
+      appointmentDate,
+      slot,
+      tokenNumber,
+      status: 'waiting',
+      consultationDurationMinutes
+    };
+    const estimatedWaitTime = calculateEstimatedWaitTime(appointment, ahead, activeConsultation);
 
     const result = await appointments.insertOne({
       patientId: String(req.user.id),
@@ -335,12 +338,15 @@ router.post('/book', requirePatient(), async (req, res) => {
       tokenNumber,
       status: 'waiting',
       queuePosition,
+      consultationDurationMinutes,
       estimatedWaitTime,
       bookedAt: new Date(),
+      consultationStartedAt: null,
       completedAt: null,
       notes: ''
     });
     await recalculateQueue(docIdStr, appointmentDate);
+    const savedAppointment = await appointments.findOne({ _id: result.insertedId });
 
     res.status(201).json({
       success: true,
@@ -351,7 +357,7 @@ router.post('/book', requirePatient(), async (req, res) => {
         session: matchingSession.code,
         slot,
         queuePosition,
-        estimatedWaitTime,
+        estimatedWaitTime: savedAppointment.estimatedWaitTime,
         doctorName: doctor.name,
         specialization: doctor.specialization
       }
@@ -365,20 +371,22 @@ router.post('/book', requirePatient(), async (req, res) => {
 // GET /api/patient/appointments — patient's appointments list
 router.get('/appointments', requirePatient(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
     const doctors = getCol('doctors');
 
-    const apts = await appointments.find({ patientId: String(req.user.id) }).sort({ bookedAt: -1 }).toArray();
+    const apts = await findAppointmentsAcrossDoctors({ patientId: String(req.user.id) });
+    apts.sort((a, b) => new Date(b.bookedAt) - new Date(a.bookedAt));
     const savedFeedback = await getCol('feedback').find({ patientId: String(req.user.id) }).toArray();
     const feedbackByAppointment = new Map(savedFeedback.map(item => [String(item.appointmentId), item]));
     const enriched = await Promise.all(apts.map(async a => {
+      const appointments = getDoctorCol(a.doctorId, 'appointments');
+      const estimatedWaitTime = await refreshEstimatedWaitTime(appointments, a);
       let doctor = null;
       try {
         doctor = await doctors.findOne({ _id: new ObjectId(String(a.doctorId)) }, { projection: { password: 0 } });
       } catch (e) {
         doctor = await doctors.findOne({ _id: String(a.doctorId) }, { projection: { password: 0 } });
       }
-      return { ...a, doctor, feedback: feedbackByAppointment.get(String(a._id)) || null };
+      return { ...a, estimatedWaitTime, doctor, feedback: feedbackByAppointment.get(String(a._id)) || null };
     }));
     res.json({ success: true, appointments: enriched });
   } catch (err) {
@@ -389,18 +397,15 @@ router.get('/appointments', requirePatient(), async (req, res) => {
 // GET /api/patient/token/:appointmentId — frequent tracking of token status
 router.get('/token/:appointmentId', requirePatient(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
     const doctors = getCol('doctors');
     const { appointmentId } = req.params;
 
-    let apt = null;
-    try {
-      apt = await appointments.findOne({ _id: new ObjectId(appointmentId), patientId: String(req.user.id) });
-    } catch (e) {
-      apt = await appointments.findOne({ _id: appointmentId, patientId: String(req.user.id) });
-    }
+    const apt = await findAppointmentAcrossDoctors(appointmentId, {
+      patientId: String(req.user.id)
+    });
 
     if (!apt) return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    const appointments = getDoctorCol(apt.doctorId, 'appointments');
 
     let doctor = null;
     try {
@@ -426,9 +431,11 @@ router.get('/token/:appointmentId', requirePatient(), async (req, res) => {
       status: 'in-consultation'
     });
 
-    const consultationTime = doctor ? doctor.consultationTime : 15;
+    const consultationTime = doctor ? doctor.consultationTime : CONSULTATION_MINUTES;
     const queuePosition = apt.status === 'in-consultation' ? 0 : patientsAhead + 1;
-    const estimatedWaitTime = (patientsAhead + (currentInConsultation && apt.status !== 'in-consultation' ? 1 : 0)) * consultationTime;
+    const estimatedWaitTime = apt.status === 'waiting'
+      ? await refreshEstimatedWaitTime(appointments, apt)
+      : 0;
 
     res.json({
       success: true,
@@ -462,17 +469,14 @@ router.get('/token/:appointmentId', requirePatient(), async (req, res) => {
 // DELETE /api/patient/appointments/:id — cancel appointment
 router.delete('/appointments/:id', requirePatient(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
     const { id } = req.params;
 
-    let apt = null;
-    try {
-      apt = await appointments.findOne({ _id: new ObjectId(id), patientId: String(req.user.id) });
-    } catch (e) {
-      apt = await appointments.findOne({ _id: id, patientId: String(req.user.id) });
-    }
+    const apt = await findAppointmentAcrossDoctors(id, {
+      patientId: String(req.user.id)
+    });
 
     if (!apt) return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    const appointments = getDoctorCol(apt.doctorId, 'appointments');
     if (apt.status === 'completed' || apt.status === 'in-consultation')
       return res.status(400).json({ success: false, message: 'Cannot cancel an appointment already completed or in progress.' });
 

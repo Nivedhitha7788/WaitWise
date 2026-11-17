@@ -1,34 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const { ObjectId, getCol } = require('../db/connection');
+const { ObjectId, getCol, getDoctorCol } = require('../db/connection');
 const { requireDoctor } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
 const { SESSION_SLOTS } = require('../utils/clinicConfig');
+const { calculateEstimatedWaitTime } = require('../utils/waitTime');
 
 async function recalculateQueue(doctorId, appointmentDate) {
-  const appointments = getCol('appointments');
-  const doctors = getCol('doctors');
+  const appointments = getDoctorCol(doctorId, 'appointments');
   const { start, end } = getDayRange(appointmentDate);
-
   const docIdStr = String(doctorId);
-  let doctor = null;
-  try {
-    doctor = await doctors.findOne({ _id: new ObjectId(docIdStr) });
-  } catch (e) {
-    doctor = await doctors.findOne({ _id: docIdStr });
-  }
-  const consultationTime = doctor ? doctor.consultationTime : 15;
 
   const waiting = await appointments.find({
     doctorId: docIdStr,
     appointmentDate: { $gte: start, $lte: end },
     status: 'waiting'
   }).sort({ tokenNumber: 1 }).toArray();
+  const activeConsultation = await appointments.findOne({
+    doctorId: docIdStr,
+    appointmentDate: { $gte: start, $lte: end },
+    status: 'in-consultation'
+  });
 
   for (let i = 0; i < waiting.length; i++) {
+    const estimatedWaitTime = calculateEstimatedWaitTime(waiting[i], i, activeConsultation);
     await appointments.updateOne(
       { _id: waiting[i]._id },
-      { $set: { queuePosition: i + 1, estimatedWaitTime: i * consultationTime } }
+      { $set: { queuePosition: i + 1, estimatedWaitTime } }
     );
   }
 }
@@ -53,9 +51,10 @@ router.get('/profile', requireDoctor(), async (req, res) => {
 // GET /api/doctor/queue — today's psychiatry queue and statistics
 router.get('/queue', requireDoctor(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
+    const appointments = getDoctorCol(req.user.id, 'appointments');
     const users = getCol('users');
     const { start, end } = getDayRange(new Date());
+    await recalculateQueue(req.user.id, new Date());
 
     const apts = await appointments.find({
       doctorId: String(req.user.id),
@@ -96,7 +95,7 @@ router.get('/queue', requireDoctor(), async (req, res) => {
 // PATCH /api/doctor/appointments/:id/status
 router.patch('/appointments/:id/status', requireDoctor(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
+    const appointments = getDoctorCol(req.user.id, 'appointments');
     const { id } = req.params;
     const { status, notes } = req.body;
     const valid = ['waiting', 'in-consultation', 'completed', 'cancelled'];
@@ -116,7 +115,16 @@ router.patch('/appointments/:id/status', requireDoctor(), async (req, res) => {
 
     const update = { status };
     if (notes !== undefined) update.notes = notes;
-    if (status === 'completed') update.completedAt = new Date();
+    if (status !== 'waiting') update.estimatedWaitTime = 0;
+    if (status === 'in-consultation') {
+      update.consultationStartedAt = new Date();
+      update.consultationDurationMinutes = Number(apt.consultationDurationMinutes) || 60;
+    }
+    if (status === 'completed') {
+      update.completedAt = new Date();
+      update.consultationCompletedAt = new Date();
+    }
+    if (status === 'waiting') update.consultationStartedAt = null;
 
     await appointments.updateOne({ _id: apt._id }, { $set: update });
     await recalculateQueue(req.user.id, apt.appointmentDate);
@@ -131,7 +139,7 @@ router.patch('/appointments/:id/status', requireDoctor(), async (req, res) => {
 // PATCH /api/doctor/appointments/:id/complete — mark past consultation complete and update queue
 router.patch('/appointments/:id/complete', requireDoctor(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
+    const appointments = getDoctorCol(req.user.id, 'appointments');
     const { id } = req.params;
     const { notes } = req.body;
 
@@ -147,6 +155,7 @@ router.patch('/appointments/:id/complete', requireDoctor(), async (req, res) => 
       return res.status(403).json({ success: false, message: 'Not authorized.' });
 
     const update = { status: 'completed', completedAt: new Date() };
+    update.consultationCompletedAt = new Date();
     if (notes) update.notes = notes;
 
     await appointments.updateOne({ _id: apt._id }, { $set: update });

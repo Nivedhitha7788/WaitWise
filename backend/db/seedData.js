@@ -102,6 +102,13 @@ async function seedInitialData(getCol) {
       await metadata.insertOne({ key: 'psychiatry-clinic-v1', completedAt: new Date() });
       console.log('✓ Psychiatry clinic configured with 2 General Psychiatry doctors.');
     }
+
+    for (const doctorInfo of DEFAULT_DOCTORS) {
+      await doctors.updateOne(
+        { email: doctorInfo.email },
+        { $set: { name: doctorInfo.name } }
+      );
+    }
   } catch (err) {
     console.error('Error in seedInitialData:', err.message);
     throw err;

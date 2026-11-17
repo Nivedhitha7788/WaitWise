@@ -19,13 +19,13 @@
   - Web Audio & Browser Notification chimes when the user's turn arrives (`#turnAlertBanner`).
   - Automatic queue advancement whenever a doctor marks past consultations as completed.
 - **Ward Visits Status:** Doctors can mark themselves unavailable with reasons such as *"Visiting existing patients in ward (In-Patient rounds)"*.
-- **MongoDB Persistence:** Patient registrations, appointments, doctor availability, consultation notes, and system data are stored in MongoDB. The server will not start if MongoDB is unavailable, preventing data from being silently written to a different store.
+- **MongoDB Persistence:** Patient registrations, doctor identities, contact requests, and feedback are stored in the shared `waitwise` database. Each doctor has a separate `waitwise_doctor_<id-hash>` database for their profile and appointments. On startup, existing shared appointment records are copied into the appropriate doctor database without deleting the source records. The server will not start if MongoDB is unavailable, preventing data from being silently written to a different store.
 
 ### MongoDB Data
 
 - **Users:** Patient profile fields (`name`, `email`, `phone`, `age`, `gender`), role, and a hashed password. The seeded admin account stores its name, email, role, phone, and hashed password.
 - **Doctors:** Name, email, hashed password, specialization, consultation duration, weekly availability slots, current availability and reason, registration metadata, and creation time.
-- **Appointments:** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait, status, booking/completion timestamps, and consultation notes.
+- **Appointments (doctor-specific databases):** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait in minutes, 60-minute consultation duration, status, consultation start/completion timestamps, booking timestamp, and consultation notes. The first token's estimate is the time until its scheduled start; later tokens use the remaining active consultation time plus 60 minutes per waiting patient ahead. Estimates are refreshed in MongoDB as queue state changes and during patient token tracking.
 
 ---
 

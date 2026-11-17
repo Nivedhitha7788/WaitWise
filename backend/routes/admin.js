@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { ObjectId, getCol } = require('../db/connection');
+const { ObjectId, getCol, getDoctorCol, ensureDoctorDatabase } = require('../db/connection');
 const { requireAdmin } = require('../middleware/auth');
 const { getDayRange } = require('../utils/dateHelper');
+const { findAppointmentsAcrossDoctors } = require('../utils/appointmentStore');
 const {
   CLINIC_SPECIALIZATION,
   CONSULTATION_MINUTES,
@@ -16,6 +17,10 @@ const { seedInitialData } = require('../db/seedData');
 router.get('/seed', async (req, res) => {
   try {
     await seedInitialData(getCol);
+    const seededDoctors = await getCol('doctors').find({}).toArray();
+    for (const doctor of seededDoctors) {
+      await ensureDoctorDatabase(doctor);
+    }
     res.json({
       success: true,
       message: 'System seeded with the default admin and 2 General Psychiatry doctors.',
@@ -33,25 +38,24 @@ router.get('/dashboard', requireAdmin(), async (req, res) => {
   try {
     const users = getCol('users');
     const doctors = getCol('doctors');
-    const appointments = getCol('appointments');
 
     const { start, end } = getDayRange(new Date());
 
-    const [totalPatients, totalDoctors, todayAppointments, waitingCount, completedCount, inConsultationCount] = await Promise.all([
+    const [totalPatients, totalDoctors, appointments] = await Promise.all([
       users.countDocuments({ role: 'patient' }),
       doctors.countDocuments({ retired: { $ne: true } }),
-      appointments.countDocuments({ appointmentDate: { $gte: start, $lte: end } }),
-      appointments.countDocuments({ appointmentDate: { $gte: start, $lte: end }, status: 'waiting' }),
-      appointments.countDocuments({ appointmentDate: { $gte: start, $lte: end }, status: 'completed' }),
-      appointments.countDocuments({ appointmentDate: { $gte: start, $lte: end }, status: 'in-consultation' })
+      findAppointmentsAcrossDoctors({ appointmentDate: { $gte: start, $lte: end } })
     ]);
+    const waitingCount = appointments.filter(appointment => appointment.status === 'waiting').length;
+    const completedCount = appointments.filter(appointment => appointment.status === 'completed').length;
+    const inConsultationCount = appointments.filter(appointment => appointment.status === 'in-consultation').length;
 
     res.json({
       success: true,
       data: {
         totalPatients,
         totalDoctors,
-        todayAppointments,
+        todayAppointments: appointments.length,
         waitingCount,
         completedCount,
         inConsultationCount
@@ -93,8 +97,9 @@ router.post('/register-doctor', requireAdmin(), async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(password, 10);
-    const result = await doctors.insertOne({
-      name: name.trim().startsWith('Dr.') ? name.trim() : `Dr. ${name.trim()}`,
+    const doctorName = name.trim().startsWith('Dr.') ? name.trim() : `Dr. ${name.trim()}`;
+    const newDoctor = {
+      name: doctorName,
       email: lowerEmail,
       password: hashed,
       specialization: CLINIC_SPECIALIZATION,
@@ -105,7 +110,9 @@ router.post('/register-doctor', requireAdmin(), async (req, res) => {
       retired: false,
       registeredBy: req.user.id,
       createdAt: new Date()
-    });
+    };
+    const result = await doctors.insertOne(newDoctor);
+    await ensureDoctorDatabase({ _id: result.insertedId, name: doctorName, email: lowerEmail, specialization: CLINIC_SPECIALIZATION, consultationTime: CONSULTATION_MINUTES });
 
     res.status(201).json({
       success: true,
@@ -122,13 +129,13 @@ router.post('/register-doctor', requireAdmin(), async (req, res) => {
 router.get('/doctors', requireAdmin(), async (req, res) => {
   try {
     const doctors = getCol('doctors');
-    const appointments = getCol('appointments');
     const { start, end } = getDayRange(new Date());
 
     const allDoctors = await doctors.find({ retired: { $ne: true } }, { projection: { password: 0 } }).toArray();
 
     const withStats = await Promise.all(allDoctors.map(async d => {
       const docIdStr = String(d._id);
+      const appointments = getDoctorCol(d._id, 'appointments');
       const [todayQueue, todayWaiting, todayCompleted, todayInConsultation] = await Promise.all([
         appointments.countDocuments({ doctorId: docIdStr, appointmentDate: { $gte: start, $lte: end } }),
         appointments.countDocuments({ doctorId: docIdStr, appointmentDate: { $gte: start, $lte: end }, status: 'waiting' }),
@@ -148,7 +155,6 @@ router.get('/doctors', requireAdmin(), async (req, res) => {
 // GET /api/admin/appointments — overall view of all appointments
 router.get('/appointments', requireAdmin(), async (req, res) => {
   try {
-    const appointments = getCol('appointments');
     const users   = getCol('users');
     const doctors = getCol('doctors');
     const { date, status } = req.query;
@@ -160,7 +166,10 @@ router.get('/appointments', requireAdmin(), async (req, res) => {
     }
     if (status) filter.status = status;
 
-    const apts = await appointments.find(filter).sort({ appointmentDate: -1, tokenNumber: 1 }).toArray();
+    const apts = await findAppointmentsAcrossDoctors(filter);
+    apts.sort((a, b) =>
+      new Date(b.appointmentDate) - new Date(a.appointmentDate) || a.tokenNumber - b.tokenNumber
+    );
 
     const enriched = await Promise.all(apts.map(async a => {
       let patient = null;

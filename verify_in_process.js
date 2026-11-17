@@ -1,8 +1,9 @@
 const app = require('./backend/server');
-const { connectDB, getCol } = require('./backend/db/connection');
+const { connectDB, getCol, getDoctorCol, getDoctorDBName } = require('./backend/db/connection');
 const assert = require('assert');
 const { getClinicDateKey } = require('./backend/utils/clinicConfig');
 const { getDayRange } = require('./backend/utils/dateHelper');
+const { calculateEstimatedWaitTime } = require('./backend/utils/waitTime');
 
 function formatLocalDate(date) {
   return [
@@ -68,16 +69,48 @@ async function verifyAll() {
   console.log('Connecting to database...');
   await connectDB();
 
-  const appointmentsCol = getCol('appointments');
   const doctorsCol = getCol('doctors');
   const usersCol = getCol('users');
   const feedbackCol = getCol('feedback');
   const contactMessagesCol = getCol('contactMessages');
   const doctorEmail = 'dr.sharma@waitwise.com';
   const originalDoctor = await doctorsCol.findOne({ email: doctorEmail });
+  const appointmentsCol = getDoctorCol(originalDoctor._id, 'appointments');
+  const secondDoctor = await doctorsCol.findOne({ email: 'dr.patel@waitwise.com' });
   const testEmail = `waitwise-test-${Date.now()}@example.com`;
   const contactEmail = `waitwise-contact-${Date.now()}@example.com`;
   let testPatientId = null;
+  assert.notStrictEqual(
+    getDoctorDBName(originalDoctor._id),
+    getDoctorDBName(secondDoctor._id),
+    'Each doctor should map to an isolated MongoDB database.'
+  );
+  const doctorProfile = await getDoctorCol(originalDoctor._id, 'doctorProfile')
+    .findOne({ doctorId: String(originalDoctor._id) });
+  assert.strictEqual(doctorProfile.name, 'Dr. Rajesh Sharma');
+  const secondDoctorProfile = await getDoctorCol(secondDoctor._id, 'doctorProfile')
+    .findOne({ doctorId: String(secondDoctor._id) });
+  assert.strictEqual(secondDoctorProfile.name, 'Dr. Priya Patel');
+  assert.strictEqual(
+    calculateEstimatedWaitTime({
+      appointmentDate: new Date('2026-11-18T06:30:00.000Z'),
+      slot: '09:00 - 10:00',
+      tokenNumber: 1,
+      status: 'waiting'
+    }, 0, null, new Date('2026-11-18T03:25:00.000Z')),
+    5,
+    'The first token wait should be the exact time until its scheduled start.'
+  );
+  assert.strictEqual(
+    calculateEstimatedWaitTime(
+      { tokenNumber: 3, status: 'waiting', consultationDurationMinutes: 60 },
+      2,
+      { consultationDurationMinutes: 60, consultationStartedAt: new Date('2026-11-18T03:00:00.000Z') },
+      new Date('2026-11-18T03:10:00.000Z')
+    ),
+    170,
+    'Later token waits should include live active consultation time and 60 minutes per patient ahead.'
+  );
   try {
   await doctorsCol.updateOne({ email: 'dr.sharma@waitwise.com' }, { $set: { isAvailable: true, unavailabilityReason: '' } });
   console.log('DB ready (test state initialized).\n');
@@ -268,6 +301,9 @@ async function verifyAll() {
     slot: chosenSlot
   });
   assert(savedAppointment);
+  assert.strictEqual(savedAppointment.consultationDurationMinutes, 60);
+  assert.strictEqual(typeof savedAppointment.estimatedWaitTime, 'number');
+  assert.strictEqual(await getCol('appointments').countDocuments({ _id: savedAppointment._id }), 0);
   assert.strictEqual(savedAppointment.session, 'FN');
   assert.strictEqual(savedAppointment.status, 'waiting');
   assert.strictEqual(savedAppointment.tokenNumber, bookRes.body.appointment.tokenNumber);
@@ -309,6 +345,9 @@ async function verifyAll() {
     status: 'in-consultation'
   }, { authorization: `Bearer ${doctorToken}` });
   console.log('Call-in status:', callIn.body.message);
+  const activeAppointment = await appointmentsCol.findOne({ _id: savedAppointment._id });
+  assert(activeAppointment.consultationStartedAt instanceof Date);
+  assert.strictEqual(activeAppointment.consultationDurationMinutes, 60);
 
   // Patient tracks updated status
   const trackInCon = await mockRequest(app, 'GET', `/api/patient/token/${appointmentId}`, null, {
@@ -326,6 +365,7 @@ async function verifyAll() {
   assert.strictEqual(completedAppointment.status, 'completed');
   assert.strictEqual(completedAppointment.notes, 'Prescribed anti-histamine, symptoms mild.');
   assert(completedAppointment.completedAt instanceof Date);
+  assert(completedAppointment.consultationCompletedAt instanceof Date);
 
   console.log('\n=== TEST 11A: PATIENT FEEDBACK AFTER COMPLETED VISIT ===');
   const feedbackRes = await mockRequest(app, 'POST', '/api/patient/feedback', {
