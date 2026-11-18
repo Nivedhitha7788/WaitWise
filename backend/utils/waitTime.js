@@ -11,7 +11,7 @@ function getScheduledStart(appointment) {
 function calculateEstimatedWaitTime(appointment, waitingAheadCount, activeConsultation, now = new Date()) {
   if (appointment.status !== 'waiting') return 0;
 
-  if (!activeConsultation && Number(appointment.tokenNumber) === 1 && waitingAheadCount === 0) {
+  if (!activeConsultation && waitingAheadCount === 0) {
     const scheduledStart = getScheduledStart(appointment);
     if (scheduledStart) return Math.max(0, Math.ceil((scheduledStart.getTime() - now.getTime()) / 60000));
   }

@@ -111,6 +111,22 @@ async function verifyAll() {
     170,
     'Later token waits should include live active consultation time and 60 minutes per patient ahead.'
   );
+  assert.strictEqual(
+    calculateEstimatedWaitTime(
+      {
+        appointmentDate: new Date('2026-11-19T06:30:00.000Z'),
+        slot: '10:15 - 11:15',
+        tokenNumber: 2,
+        status: 'waiting',
+        consultationDurationMinutes: 60
+      },
+      0,
+      null,
+      new Date('2026-11-18T16:00:00.000Z')
+    ),
+    765,
+    'The first token for a later slot should wait until that slot scheduled start, not display zero.'
+  );
   try {
   await doctorsCol.updateOne({ email: 'dr.sharma@waitwise.com' }, { $set: { isAvailable: true, unavailabilityReason: '' } });
   console.log('DB ready (test state initialized).\n');
