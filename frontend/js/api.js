@@ -642,6 +642,22 @@ const I18n = (() => {
   let language = ['en', 'ta', 'hi'].includes(savedLanguage) ? savedLanguage : 'en';
   const sourceTitle = document.title;
 
+  function translateWaitDuration(duration) {
+    const match = duration.match(/^(?:(\d+) hr(?: (\d+) min)?|(\d+) min)$/);
+    if (!match) return duration;
+
+    const hours = Number(match[1] || 0);
+    const minutes = Number(match[2] || match[3] || 0);
+    const hourLabel = language === 'ta'
+      ? 'மணி'
+      : hours === 1 ? 'घंटा' : 'घंटे';
+    const minuteLabel = language === 'ta' ? 'நிமிடங்கள்' : 'मिनट';
+    const parts = [];
+    if (hours) parts.push(`${hours} ${hourLabel}`);
+    if (minutes || !hours) parts.push(`${minutes} ${minuteLabel}`);
+    return parts.join(' ');
+  }
+
   function translateTextNode(node) {
     let source = originalText.get(node);
     if (source === undefined || node.nodeValue !== renderedText.get(node)) {
@@ -662,7 +678,8 @@ const I18n = (() => {
     const ratingLabel = trimmed.match(/^(\d+) out of 5 stars$/);
     const signInRole = trimmed.match(/^Sign in as (Patient|Doctor|Administrator) →$/);
     const sessionSlot = trimmed.match(/^(FN|AN) Session: (.+)$/);
-    const estimatedWait = trimmed.match(/^Est\. (\d+) min$/);
+    const estimatedWait = trimmed.match(/^Est\. ((?:(?:\d+) hr(?: \d+ min)?|\d+ min))$/);
+    const waitDuration = trimmed.match(/^(?:(\d+) hr(?: (\d+) min)?|(\d+) min)$/);
     const waitingCount = trimmed.match(/^\((\d+) waiting\)$/);
     const appointmentSummary = trimmed.match(/^(.+) • (FN|AN) Session: (.+)$/);
     const appointmentDate = trimmed.match(/^Date: (.+)$/);
@@ -721,8 +738,8 @@ const I18n = (() => {
         : `${sessionSlot[1]} सत्र: ${sessionSlot[2]}`;
     } else if (!translated && estimatedWait) {
       translated = language === 'ta'
-        ? `மதிப்பிடப்பட்ட நேரம் ${estimatedWait[1]} நிமிடம்`
-        : `अनुमानित प्रतीक्षा ${estimatedWait[1]} मिनट`;
+        ? `மதிப்பிடப்பட்ட நேரம் ${translateWaitDuration(estimatedWait[1])}`
+        : `अनुमानित प्रतीक्षा ${translateWaitDuration(estimatedWait[1])}`;
     } else if (!translated && waitingCount) {
       translated = language === 'ta'
         ? `(${waitingCount[1]} காத்திருக்கின்றனர்)`
@@ -734,6 +751,8 @@ const I18n = (() => {
         : `${specialization} • ${appointmentSummary[2]} सत्र: ${appointmentSummary[3]}`;
     } else if (!translated && appointmentDate) {
       translated = `${dictionary['Date:'] || (language === 'ta' ? 'தேதி:' : 'तारीख:')} ${appointmentDate[1]}`;
+    } else if (!translated && waitDuration) {
+      translated = translateWaitDuration(trimmed);
     } else if (!translated && minutes) {
       translated = language === 'ta'
         ? `${minutes[1]} நிமிடங்கள்`
@@ -926,6 +945,15 @@ async function api(method, path, body) {
   const data = await res.json();
   if (!res.ok) throw { status: res.status, message: data.message || 'Request failed' };
   return data;
+}
+
+function formatWaitTime(minutes) {
+  const totalMinutes = Math.max(0, Math.floor(Number(minutes) || 0));
+  const hours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+  if (!hours) return `${remainingMinutes} min`;
+  if (!remainingMinutes) return `${hours} hr`;
+  return `${hours} hr ${remainingMinutes} min`;
 }
 
 /* ---------- Navbar (Besloor Style) ---------- */

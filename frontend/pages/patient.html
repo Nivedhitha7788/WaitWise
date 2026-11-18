@@ -318,7 +318,7 @@
         });
         const a = res.appointment;
         showAlert($('#bookAlert'), 'success',
-          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${a.estimatedWaitTime} min</b>.`);
+          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.`);
 
         selectedSlot = null;
         await loadSlots();
@@ -381,7 +381,7 @@
               ${a.status === 'waiting' ? `
                 <div style="margin-top:16px;display:flex;gap:28px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);font-size:13px;">
                   <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Queue Position</span><b style="color:#ffffff;font-family:var(--font-serif);font-size:17px;">#${a.queuePosition}</b></div>
-                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Est. Wait Remaining</span><b style="color:var(--accent-orange);font-family:var(--font-serif);font-size:17px;">${a.estimatedWaitTime} min</b></div>
+                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Est. Wait Remaining</span><b style="color:var(--accent-orange);font-family:var(--font-serif);font-size:17px;">${formatWaitTime(a.estimatedWaitTime)}</b></div>
                   <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Hospital Entry</span><span style="color:#10b981;font-weight:700;">Remain Off-Site Until Turn</span></div>
                 </div>
               ` : ''}
@@ -530,8 +530,7 @@
               </div>
               <div class="info-cell">
                 <div class="info-cell-label">Est. Wait Time</div>
-                <div class="info-cell-val" style="color:#ffffff;">${t.estimatedWaitTime}</div>
-                <div class="info-cell-sub">minutes</div>
+                <div class="info-cell-val" style="color:#ffffff;">${formatWaitTime(t.estimatedWaitTime)}</div>
               </div>
             </div>
 
