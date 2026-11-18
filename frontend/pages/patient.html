@@ -29,16 +29,6 @@
         </div>
       </div>
 
-      <!-- OP Policy / Emergency Warning Banner -->
-      <div class="notice-banner">
-        🏥 <strong>Strictly Outpatient (OP) Consultations.</strong> Physical hospital presence is required <b>ONLY when your token is called</b>. For trauma or emergency care, proceed to the <strong>Hospital Emergency Ward</strong>.
-      </div>
-
-      <!-- Turn Alert Notification Banner (Hidden until turn arrives) -->
-      <div id="turnAlertBanner" class="alert alert-success hidden" style="font-size:16px; font-weight:700; text-align:center; padding:18px; margin-bottom:26px; border:2px solid #10b981; animation: pulse 1.5s infinite;">
-        🔔 YOUR TURN HAS ARRIVED! Please enter the Doctor's OP Consultation Room immediately.
-      </div>
-
       <!-- Navigation Tabs (Besloor Orange Style) -->
       <div class="tabs">
         <button type="button" class="tab active" data-tab="book">📅 Book OP Consultation Slot</button>
@@ -90,7 +80,10 @@
             <div class="orange-bar-left"></div>
             <p style="font-size:13px; color:var(--text-muted);">Queue positions advance automatically as doctors finish past consultations.</p>
           </div>
-          <button class="btn btn-outline btn-sm" id="refreshAptsBtn">🔄 Refresh Tokens</button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-outline-orange btn-sm" id="enableQueueNotificationsBtn">🔔 Enable Queue Notifications</button>
+            <button class="btn btn-outline btn-sm" id="refreshAptsBtn">🔄 Refresh Tokens</button>
+          </div>
         </div>
         <div id="aptsList"><p style="color:#94a3b8; text-align:center; padding:30px 0;">Loading tokens...</p></div>
       </div>
@@ -122,6 +115,7 @@
   </footer>
 
   <script src="/js/api.js"></script>
+  <script src="/js/queueNotifications.js"></script>
   <script>
     if (!guardPage('patient')) throw new Error('redirect');
     renderNavbar('navbar');
@@ -159,9 +153,30 @@
       $('#enableNotifyBtn').style.display = 'none';
     }
 
+    const enableQueueNotificationsBtn = $('#enableQueueNotificationsBtn');
+    if (!QueueNotifications.desktopSupported || QueueNotifications.desktopPermission === 'granted') {
+      enableQueueNotificationsBtn.style.display = 'none';
+    } else if (QueueNotifications.desktopPermission === 'denied') {
+      enableQueueNotificationsBtn.textContent = 'Desktop Queue Notifications Blocked';
+      enableQueueNotificationsBtn.disabled = true;
+    }
+    enableQueueNotificationsBtn.onclick = async () => {
+      try {
+        const permission = await QueueNotifications.requestDesktopPermission();
+        if (permission === 'granted') {
+          enableQueueNotificationsBtn.style.display = 'none';
+        } else {
+          enableQueueNotificationsBtn.textContent = 'Desktop Queue Notifications Blocked';
+          enableQueueNotificationsBtn.disabled = true;
+        }
+      } catch (error) {
+        console.error('Unable to enable desktop queue notifications:', error);
+        alert('Desktop queue notifications could not be enabled. In-app notifications will still appear.');
+      }
+    };
+
     function triggerTurnNotification(docName, tokenNum) {
       playTurnChime();
-      $('#turnAlertBanner').classList.remove('hidden');
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification('WaitWise: YOUR TURN HAS ARRIVED!', {
           body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
@@ -556,6 +571,11 @@
     I18n.onChange(loadDoctors);
     loadDoctors();
     loadMyAppointments();
+    QueueNotifications.start(async () => {
+      const { appointments } = await api('GET', '/api/patient/appointments');
+      return appointments;
+    });
+    window.addEventListener('beforeunload', QueueNotifications.stop, { once: true });
   </script>
 </body>
 </html>

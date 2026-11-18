@@ -16,7 +16,7 @@
 - **Real-Time Digital Token Lifecycle:** 
   - Token generated on slot reservation.
   - Frequent live tracking (auto-updates every 10 seconds).
-  - Web Audio & Browser Notification chimes when the user's turn arrives (`#turnAlertBanner`).
+  - Separate queue-movement in-app and browser notifications when the patient's position advances, plus Web Audio & Browser Notification chimes when the user's turn arrives.
   - Automatic queue advancement whenever a doctor marks past consultations as completed.
 - **Ward Visits Status:** Doctors can mark themselves unavailable with reasons such as *"Visiting existing patients in ward (In-Patient rounds)"*.
 - **MongoDB Persistence:** Patient registrations, doctor identities, contact requests, and feedback are stored in the shared `waitwise` database. Each doctor has a separate `waitwise_doctor_<id-hash>` database for their profile and appointments. On startup, existing shared appointment records are copied into the appropriate doctor database without deleting the source records. The server will not start if MongoDB is unavailable, preventing data from being silently written to a different store.
