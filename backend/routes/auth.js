@@ -37,7 +37,6 @@ router.post('/register', async (req, res) => {
       phone: phone ? phone.trim() : '',
       age: age ? Number(age) : null,
       gender: gender || '',
-      notificationPreferences: { email: false, sms: false },
       createdAt: new Date()
     });
 

@@ -22,10 +22,11 @@
             Welcome to WaitWise &bull; Arrive only when your digital token is called
           </p>
         </div>
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
           <button class="btn btn-outline-orange btn-sm" id="enableNotifyBtn">
-            🔔 Enable Turn Audio Alerts
+            🔔 Enable Browser Alerts + Sound
           </button>
+          <span id="turnAlertsStatus" aria-live="polite" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
       </div>
 
@@ -84,24 +85,6 @@
 
       <!-- TAB 2: MY TOKENS & LIVE FREQUENT TRACKING -->
       <div id="tab-myapts" class="hidden">
-        <form id="notificationPreferencesForm" class="card" style="margin-bottom:24px;">
-          <h2 style="font-family:var(--font-serif);font-size:20px;color:#ffffff;">Appointment notifications</h2>
-          <p style="font-size:13px;color:var(--text-muted);margin:8px 0 14px;">
-            Optional: receive a booking confirmation and a message when your turn starts. If enabled, your contact detail and token/date/slot are sent to Resend (email) or Twilio (SMS). Clinical notes are never shared.
-          </p>
-          <label style="display:block;margin:10px 0;color:#ffffff;">
-            <input id="emailNotification" type="checkbox" />
-            Email notifications
-            <span id="emailNotificationStatus" style="color:var(--text-muted);font-size:12px;"></span>
-          </label>
-          <label style="display:block;margin:10px 0;color:#ffffff;">
-            <input id="smsNotification" type="checkbox" />
-            SMS notifications
-            <span id="smsNotificationStatus" style="color:var(--text-muted);font-size:12px;"></span>
-          </label>
-          <button class="btn btn-outline-orange btn-sm" type="submit">Save notification preferences</button>
-          <div id="notificationPreferencesAlert" aria-live="polite" style="margin-top:10px;"></div>
-        </form>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
           <div>
             <h2 style="font-family:var(--font-serif); font-size:24px; color:#ffffff;">Your Booked OP Tokens</h2>
@@ -147,83 +130,109 @@
     const user = Auth.user;
     $('#patientGreeting').textContent = `Hello, ${user?.name || 'Patient'} — Queue digitally from home; enter only when your turn arrives.`;
 
+    let turnAudioContext = null;
+    const alertedTokens = new Set();
+
     function playTurnChime() {
+      if (!turnAudioContext || turnAudioContext.state !== 'running') return;
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
+        const osc = turnAudioContext.createOscillator();
+        const gain = turnAudioContext.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+        osc.frequency.setValueAtTime(587.33, turnAudioContext.currentTime);
+        osc.frequency.setValueAtTime(880, turnAudioContext.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, turnAudioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, turnAudioContext.currentTime + 0.6);
         osc.connect(gain);
-        gain.connect(audioCtx.destination);
+        gain.connect(turnAudioContext.destination);
+        osc.onended = () => {
+          osc.disconnect();
+          gain.disconnect();
+        };
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.6);
-      } catch (e) {}
+        osc.stop(turnAudioContext.currentTime + 0.6);
+      } catch (err) {
+        console.error('Could not play the turn alert sound:', err);
+        $('#turnAlertsStatus').textContent = 'Sound alert failed; check browser audio settings.';
+      }
     }
 
     $('#enableNotifyBtn').onclick = async () => {
+      const statuses = [];
+      let permissionRequest = null;
       if ('Notification' in window) {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted') {
-          alert('Turn notifications enabled! You will receive an alert when your turn is next.');
-          $('#enableNotifyBtn').style.display = 'none';
+        try {
+          permissionRequest = Notification.requestPermission();
+        } catch (err) {
+          console.error('Could not request notification permission:', err);
+          statuses.push('Could not enable desktop notifications.');
+        }
+      } else {
+        statuses.push('Desktop notifications are not supported by this browser.');
+      }
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      let audioResume = null;
+      if (!AudioContext) {
+        statuses.push('Turn sound is not supported by this browser.');
+      } else {
+        try {
+          turnAudioContext = turnAudioContext || new AudioContext();
+          audioResume = turnAudioContext.state === 'suspended'
+            ? turnAudioContext.resume()
+            : Promise.resolve();
+        } catch (err) {
+          console.error('Could not enable turn sound:', err);
+          statuses.push('Could not enable sound; check browser audio settings.');
         }
       }
+
+      if (permissionRequest) {
+        try {
+          const permission = await permissionRequest;
+          statuses.push(permission === 'granted'
+            ? 'Desktop notifications enabled.'
+            : 'Desktop notifications were not allowed.');
+        } catch (err) {
+          console.error('Could not enable desktop notifications:', err);
+          statuses.push('Could not enable desktop notifications.');
+        }
+      }
+
+      if (audioResume) {
+        try {
+          await audioResume;
+          if (turnAudioContext.state !== 'running') throw new Error('Audio context is not running.');
+          statuses.push('Turn sound enabled.');
+        } catch (err) {
+          console.error('Could not enable turn sound:', err);
+          statuses.push('Could not enable sound; check browser audio settings.');
+        }
+      }
+
+      $('#turnAlertsStatus').textContent = statuses.join(' ');
+      const notificationReady = !('Notification' in window) || Notification.permission === 'granted';
+      if (turnAudioContext && turnAudioContext.state === 'running' && notificationReady) {
+        $('#enableNotifyBtn').style.display = 'none';
+      }
     };
-    if ('Notification' in window && Notification.permission === 'granted') {
-      $('#enableNotifyBtn').style.display = 'none';
-    }
 
     function triggerTurnNotification(docName, tokenNum) {
+      const notificationKey = `${currentTrackingId}:${tokenNum}`;
+      if (alertedTokens.has(notificationKey)) return;
+      alertedTokens.add(notificationKey);
       playTurnChime();
       $('#turnAlertBanner').classList.remove('hidden');
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('WaitWise: YOUR TURN HAS ARRIVED!', {
-          body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
-        });
+        try {
+          new Notification('WaitWise: YOUR TURN HAS ARRIVED!', {
+            body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
+          });
+        } catch (err) {
+          console.error('Could not show the turn notification:', err);
+          $('#turnAlertsStatus').textContent = 'Desktop notification failed; check browser notification settings.';
+        }
       }
-    }
-
-    async function loadNotificationPreferences() {
-      const form = $('#notificationPreferencesForm');
-      try {
-        const { preferences, availability } = await api('GET', '/api/patient/notification-preferences');
-        $('#emailNotification').checked = preferences.email === true;
-        $('#smsNotification').checked = preferences.sms === true;
-        $('#emailNotification').disabled = !availability.email && !preferences.email;
-        $('#smsNotification').disabled = !availability.sms && !preferences.sms;
-        $('#emailNotificationStatus').textContent = availability.email ? '' : ' (not configured by the clinic)';
-        $('#smsNotificationStatus').textContent = availability.sms ? '' : ' (not configured by the clinic)';
-      } catch (err) {
-        showAlert($('#notificationPreferencesAlert'), 'error', err.message);
-        form.querySelector('button[type="submit"]').disabled = true;
-      }
-    }
-
-    $('#notificationPreferencesForm').onsubmit = async e => {
-      e.preventDefault();
-      const button = e.currentTarget.querySelector('button[type="submit"]');
-      button.disabled = true;
-      try {
-        await api('PATCH', '/api/patient/notification-preferences', {
-          email: $('#emailNotification').checked,
-          sms: $('#smsNotification').checked
-        });
-        showAlert($('#notificationPreferencesAlert'), 'success', 'Notification preferences saved.');
-      } catch (err) {
-        showAlert($('#notificationPreferencesAlert'), 'error', err.message);
-      } finally {
-        button.disabled = false;
-      }
-    };
-
-    function notificationSummary(notifications) {
-      return Object.values(notifications || {})
-        .map(result => escapeHTML(result.message))
-        .join('<br>');
     }
 
     // Tabs
@@ -374,9 +383,8 @@
           doctorId: docId, date, session: selectedSession, slot: selectedSlot
         });
         const a = res.appointment;
-        const notificationStatus = notificationSummary(res.notifications);
         showAlert($('#bookAlert'), 'success',
-          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.${notificationStatus ? `<br>${notificationStatus}` : ''}`);
+          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.`);
 
         selectedSlot = null;
         await loadSlots();
@@ -613,7 +621,6 @@
 
     I18n.onChange(loadDoctors);
     loadDoctors();
-    loadNotificationPreferences();
     loadMyAppointments();
   </script>
 </body>

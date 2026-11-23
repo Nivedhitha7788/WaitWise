@@ -6,70 +6,6 @@ const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/date
 const { SESSION_SLOTS, isPastClinicSlot, CONSULTATION_MINUTES } = require('../utils/clinicConfig');
 const { findAppointmentsAcrossDoctors, findAppointmentAcrossDoctors } = require('../utils/appointmentStore');
 const { calculateEstimatedWaitTime, refreshEstimatedWaitTime } = require('../utils/waitTime');
-const { getNotificationAvailability, dispatchAppointmentNotifications } = require('../services/notifications');
-
-function getPatientObjectId(id) {
-  return ObjectId.isValid(id) ? new ObjectId(id) : id;
-}
-
-router.get('/notification-preferences', requirePatient(), async (req, res) => {
-  try {
-    const patient = await getCol('users').findOne(
-      { _id: getPatientObjectId(req.user.id), role: 'patient' },
-      { projection: { notificationPreferences: 1 } }
-    );
-    if (!patient) return res.status(404).json({ success: false, message: 'Patient account not found.' });
-
-    res.json({
-      success: true,
-      preferences: patient.notificationPreferences || { email: false, sms: false },
-      availability: getNotificationAvailability()
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error loading notification preferences.' });
-  }
-});
-
-router.patch('/notification-preferences', requirePatient(), async (req, res) => {
-  try {
-    const { email, sms } = req.body || {};
-    if (typeof email !== 'boolean' || typeof sms !== 'boolean') {
-      return res.status(400).json({ success: false, message: 'Email and SMS preferences must be boolean values.' });
-    }
-
-    const users = getCol('users');
-    const patient = await users.findOne(
-      { _id: getPatientObjectId(req.user.id), role: 'patient' },
-      { projection: { phone: 1 } }
-    );
-    if (!patient) return res.status(404).json({ success: false, message: 'Patient account not found.' });
-
-    const availability = getNotificationAvailability();
-    if (email && !availability.email) {
-      return res.status(503).json({ success: false, message: 'Email notification service is not configured.' });
-    }
-    if (sms && !availability.sms) {
-      return res.status(503).json({ success: false, message: 'SMS notification service is not configured.' });
-    }
-    if (sms) {
-      const phone = String(patient.phone || '').replace(/[()\s-]/g, '');
-      if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
-        return res.status(400).json({ success: false, message: 'Add a valid international phone number before enabling SMS notifications.' });
-      }
-    }
-
-    const preferences = { email, sms };
-    await users.updateOne(
-      { _id: getPatientObjectId(req.user.id), role: 'patient' },
-      { $set: { notificationPreferences: preferences } }
-    );
-    res.json({ success: true, preferences, availability });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error saving notification preferences.' });
-  }
-});
 
 // POST /api/patient/contact — public contact form
 router.post('/contact', async (req, res) => {
@@ -314,12 +250,6 @@ router.post('/book', requirePatient(), async (req, res) => {
     if (!doctorId || !date || !slot)
       return res.status(400).json({ success: false, message: 'Doctor, date, and slot are required.' });
 
-    const patient = await getCol('users').findOne(
-      { _id: getPatientObjectId(req.user.id), role: 'patient' },
-      { projection: { email: 1, phone: 1, notificationPreferences: 1 } }
-    );
-    if (!patient) return res.status(404).json({ success: false, message: 'Patient account not found.' });
-
     const docIdStr = String(doctorId);
     const doctors = getCol('doctors');
 
@@ -417,11 +347,6 @@ router.post('/book', requirePatient(), async (req, res) => {
     });
     await recalculateQueue(docIdStr, appointmentDate);
     const savedAppointment = await appointments.findOne({ _id: result.insertedId });
-    const notifications = await dispatchAppointmentNotifications({
-      patient,
-      appointment: savedAppointment,
-      event: 'booking'
-    });
 
     res.status(201).json({
       success: true,
@@ -435,8 +360,7 @@ router.post('/book', requirePatient(), async (req, res) => {
         estimatedWaitTime: savedAppointment.estimatedWaitTime,
         doctorName: doctor.name,
         specialization: doctor.specialization
-      },
-      notifications
+      }
     });
   } catch (err) {
     console.error(err);

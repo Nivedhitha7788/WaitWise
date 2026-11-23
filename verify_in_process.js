@@ -4,7 +4,6 @@ const assert = require('assert');
 const { getClinicDateKey } = require('./backend/utils/clinicConfig');
 const { getDayRange } = require('./backend/utils/dateHelper');
 const { calculateEstimatedWaitTime } = require('./backend/utils/waitTime');
-const { dispatchAppointmentNotifications } = require('./backend/services/notifications');
 
 function formatLocalDate(date) {
   return [
@@ -67,71 +66,6 @@ function mockRequest(app, method, url, body = null, headers = {}) {
 }
 
 async function verifyAll() {
-  let notificationRequests = 0;
-  const providerRequests = [];
-  const fakeFetch = async (url, options) => {
-    notificationRequests++;
-    assert.strictEqual(options.method, 'POST');
-    assert(!options.body.includes('clinical notes'));
-    providerRequests.push({ url, options });
-    return { ok: true, status: 200 };
-  };
-  const notificationAppointment = {
-    tokenNumber: 7,
-    slot: '09:00 - 10:00',
-    appointmentDate: new Date('2026-11-24T06:30:00.000Z'),
-    notes: 'clinical notes'
-  };
-  const noNotifications = await dispatchAppointmentNotifications({
-    patient: { notificationPreferences: { email: false, sms: false } },
-    appointment: notificationAppointment,
-    event: 'booking'
-  }, { env: {}, fetch: fakeFetch });
-  assert.deepStrictEqual(noNotifications, {});
-  assert.strictEqual(notificationRequests, 0, 'Unselected notification channels must not call providers.');
-
-  const emailNotification = await dispatchAppointmentNotifications({
-    patient: {
-      email: 'patient@example.com',
-      notificationPreferences: { email: true, sms: false }
-    },
-    appointment: notificationAppointment,
-    event: 'booking'
-  }, {
-    env: { RESEND_API_KEY: 'test-key', RESEND_FROM_EMAIL: 'clinic@example.com' },
-    fetch: fakeFetch
-  });
-  assert.strictEqual(emailNotification.email.status, 'accepted');
-  assert.strictEqual(notificationRequests, 1);
-  assert.strictEqual(providerRequests[0].url, 'https://api.resend.com/emails');
-  const emailPayload = JSON.parse(providerRequests[0].options.body);
-  assert.deepStrictEqual(emailPayload.to, ['patient@example.com']);
-  assert(emailPayload.text.includes('2026-11-24'));
-  assert(!emailPayload.text.includes('clinical notes'));
-
-  const smsNotification = await dispatchAppointmentNotifications({
-    patient: {
-      phone: '+91 98765 43210',
-      notificationPreferences: { email: false, sms: true }
-    },
-    appointment: notificationAppointment,
-    event: 'turn'
-  }, {
-    env: {
-      TWILIO_ACCOUNT_SID: 'AC123',
-      TWILIO_AUTH_TOKEN: 'test-token',
-      TWILIO_FROM_NUMBER: '+15555550100'
-    },
-    fetch: fakeFetch
-  });
-  assert.strictEqual(smsNotification.sms.status, 'accepted');
-  assert.strictEqual(notificationRequests, 2);
-  assert(providerRequests[1].url.endsWith('/AC123/Messages.json'));
-  const smsPayload = new URLSearchParams(providerRequests[1].options.body);
-  assert.strictEqual(smsPayload.get('To'), '+919876543210');
-  assert(smsPayload.get('Body').includes('Token #7'));
-  assert(!smsPayload.get('Body').includes('clinical notes'));
-
   console.log('Connecting to database...');
   await connectDB();
 
@@ -269,7 +203,6 @@ async function verifyAll() {
   assert.strictEqual(savedPatient.name, 'WaitWise Integration Patient');
   assert.strictEqual(savedPatient.role, 'patient');
   assert.strictEqual(savedPatient.phone, '+91 98765 43210');
-  assert.deepStrictEqual(savedPatient.notificationPreferences, { email: false, sms: false });
   assert.strictEqual(savedPatient.age, 32);
   assert.strictEqual(savedPatient.gender, 'Other');
   assert.notStrictEqual(savedPatient.password, 'patient123');
@@ -281,17 +214,6 @@ async function verifyAll() {
   console.log('Patient login:', patientLog.statusCode, patientLog.body.user);
   const patientToken = patientLog.body.token;
   testPatientId = patientLog.body.user.id;
-
-  const preferences = await mockRequest(app, 'GET', '/api/patient/notification-preferences', null, {
-    authorization: `Bearer ${patientToken}`
-  });
-  assert.strictEqual(preferences.statusCode, 200);
-  assert.deepStrictEqual(preferences.body.preferences, { email: false, sms: false });
-  const invalidPreferences = await mockRequest(app, 'PATCH', '/api/patient/notification-preferences', {
-    email: 'yes',
-    sms: false
-  }, { authorization: `Bearer ${patientToken}` });
-  assert.strictEqual(invalidPreferences.statusCode, 400);
 
   console.log('\n=== TEST 6A: PUBLIC CONTACT FORM ===');
   const contactMessage = await mockRequest(app, 'POST', '/api/patient/contact', {
@@ -372,7 +294,6 @@ async function verifyAll() {
   console.log('Booking Result:', bookRes.statusCode, bookRes.body.appointment);
   assert.strictEqual(bookRes.statusCode, 201);
   assert.strictEqual(bookRes.body.appointment.session, 'FN');
-  assert.deepStrictEqual(bookRes.body.notifications, {});
   const appointmentId = bookRes.body.appointment._id;
   const savedAppointment = await appointmentsCol.findOne({
     patientId: String(testPatientId),

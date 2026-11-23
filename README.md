@@ -109,17 +109,5 @@ npm test
 ```
 The in-process test suite covers authentication, MongoDB persistence for all roles and appointments, the two-doctor limit, fixed session slots, invalid-slot rejection, token generation, live tracking, and queue auto-updates.
 
-### Optional Email and SMS Notifications
-WaitWise can send appointment confirmations and turn-ready alerts using **Resend** (email) and **Twilio** (SMS). Patients must opt in under **My Tokens & Live Tracking**. Messages contain only a token, appointment date, and slot; clinical notes are not sent. Enabling these integrations sends the patient's email address or phone number and that limited appointment information to the selected provider.
-
-Set these variables in the environment used to start the backend. Email requires both Resend variables; SMS requires all three Twilio variables:
-
-| Variable | Provider | Purpose |
-|---|---|---|
-| `RESEND_API_KEY` | Resend | API key |
-| `RESEND_FROM_EMAIL` | Resend | Verified sender address |
-| `TWILIO_ACCOUNT_SID` | Twilio | Account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio | Account auth token |
-| `TWILIO_FROM_NUMBER` | Twilio | Twilio phone number in E.164 format |
-
-Without these values, the corresponding patient notification option remains unavailable. Do not commit provider credentials to source control.
+### In-Browser Turn Alerts
+The patient portal uses the browser's **Web Notifications API** for desktop alerts and **Web Audio API** for the turn chime. In the patient portal, click **Enable Browser Alerts + Sound** and allow notifications when prompted. These browser APIs require no provider accounts, API keys, email, or phone number. Alerts are generated while the patient is signed in and actively tracking a token in the website.
