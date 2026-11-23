@@ -292,15 +292,17 @@ router.post('/book', requirePatient(), async (req, res) => {
       return res.status(400).json({ success: false, message: 'This consultation time has already passed.' });
     }
 
-    // Prevent duplicate booking for same patient + same doctor on same day
+    // Allow only one active appointment per patient and doctor across all dates.
     const existing = await appointments.findOne({
       patientId: String(req.user.id),
       doctorId: docIdStr,
-      appointmentDate: { $gte: start, $lte: end },
-      status: { $ne: 'cancelled' }
+      status: { $in: ['waiting', 'in-consultation'] }
     });
     if (existing) {
-      return res.status(409).json({ success: false, message: 'You already have an active appointment with this doctor today.' });
+      return res.status(409).json({
+        success: false,
+        message: 'You already have an active appointment with this doctor. Complete or cancel it before booking another.'
+      });
     }
 
     // Check slot availability

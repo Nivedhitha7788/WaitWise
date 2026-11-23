@@ -308,6 +308,31 @@ async function verifyAll() {
   assert.strictEqual(savedAppointment.status, 'waiting');
   assert.strictEqual(savedAppointment.tokenNumber, bookRes.body.appointment.tokenNumber);
 
+  let laterBooking = null;
+  for (let offset = 1; offset <= 14 && !laterBooking; offset++) {
+    const candidate = new Date(appointmentDate);
+    candidate.setDate(candidate.getDate() + offset);
+    const candidateKey = formatLocalDate(candidate);
+    const candidateSlots = await mockRequest(app, 'GET', `/api/patient/doctors/${targetDoctor._id}/slots?date=${candidateKey}`, null, {
+      authorization: `Bearer ${patientToken}`
+    });
+    const session = candidateSlots.body.sessions && candidateSlots.body.sessions.find(item => item.slots.length > 0);
+    if (session) {
+      laterBooking = {
+        date: candidateKey,
+        session: session.code,
+        slot: session.slots[0]
+      };
+    }
+  }
+  assert(laterBooking, 'Could not find a later available clinic slot for the duplicate-booking test.');
+  const duplicateBooking = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    ...laterBooking
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(duplicateBooking.statusCode, 409);
+  assert.strictEqual(duplicateBooking.body.message, 'You already have an active appointment with this doctor. Complete or cancel it before booking another.');
+
   console.log('\n=== TEST 8: REAL-TIME TOKEN TRACKING (PATIENT VIEW) ===');
   const trackRes = await mockRequest(app, 'GET', `/api/patient/token/${appointmentId}`, null, {
     authorization: `Bearer ${patientToken}`
@@ -384,6 +409,12 @@ async function verifyAll() {
     authorization: `Bearer ${patientToken}`
   });
   assert.strictEqual(patientAppointments.body.appointments.find(item => String(item._id) === String(appointmentId)).feedback.rating, 5);
+
+  const rebookAfterCompletion = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    ...laterBooking
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(rebookAfterCompletion.statusCode, 201);
 
   const docQueueAfter = await mockRequest(app, 'GET', '/api/doctor/queue', null, {
     authorization: `Bearer ${doctorToken}`
