@@ -23,7 +23,7 @@
 
 ### MongoDB Data
 
-- **Users:** Patient profile fields (`name`, `email`, `phone`, `age`, `gender`), role, and a hashed password. The seeded admin account stores its name, email, role, phone, and hashed password.
+- **Users:** Patient and admin profile fields, role, and a hashed password. The patient registration page creates patient accounts; additional admin accounts can only be created by an authenticated admin.
 - **Doctors:** Name, email, hashed password, specialization, consultation duration, weekly availability slots, current availability and reason, registration metadata, and creation time.
 - **Appointments (doctor-specific databases):** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait in minutes, 60-minute consultation duration, status, consultation start/completion timestamps, booking timestamp, and consultation notes. The first token's estimate is the time until its scheduled start; later tokens use the remaining active consultation time plus 60 minutes per waiting patient ahead. Estimates are refreshed in MongoDB as queue state changes and during patient token tracking.
 
@@ -55,6 +55,7 @@
 
 ### 3. 🔧 Admin Interface
 - **Overall System Dashboard:** Real-time counters for Total Patients, Registered Doctors (2/2), Today's Bookings, Waiting Patients, In-Consultation, and Completed Consultations.
+- **Admin Registration:** Signed-in administrators can create additional admin accounts from the overview dashboard. Public admin self-registration is not allowed.
 - **Doctor Registration (Strict Max 2):** Admin can register doctors up to the two-doctor clinic limit. New accounts automatically use General Psychiatry and the fixed clinic schedule.
 - **Live Doctors Snapshot:** View today's queue load and availability across the two clinic doctors.
 - **Appointments Directory:** Searchable table of all patient bookings, slots, token numbers, and status.

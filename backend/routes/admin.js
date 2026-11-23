@@ -67,6 +67,54 @@ router.get('/dashboard', requireAdmin(), async (req, res) => {
   }
 });
 
+// POST /api/admin/register-admin — an existing admin creates another admin account
+router.post('/register-admin', requireAdmin(), async (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' ||
+        !name.trim() || !email.trim() || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+
+    const lowerEmail = email.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lowerEmail)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+    }
+
+    const users = getCol('users');
+    const doctors = getCol('doctors');
+    const [existsUser, existsDoctor] = await Promise.all([
+      users.findOne({ email: lowerEmail }),
+      doctors.findOne({ email: lowerEmail })
+    ]);
+    if (existsUser || existsDoctor) {
+      return res.status(409).json({ success: false, message: 'A user or doctor with this email is already registered.' });
+    }
+
+    const result = await users.insertOne({
+      name: name.trim(),
+      email: lowerEmail,
+      password: await bcrypt.hash(password, 10),
+      role: 'admin',
+      phone: '',
+      registeredBy: req.user.id,
+      createdAt: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Administrator successfully registered into WaitWise system.',
+      adminId: result.insertedId
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Error registering administrator.' });
+  }
+});
+
 // POST /api/admin/register-doctor — admin registers a doctor (strictly max 2 doctors)
 router.post('/register-doctor', requireAdmin(), async (req, res) => {
   try {

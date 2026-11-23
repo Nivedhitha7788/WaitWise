@@ -67,6 +67,30 @@
           <div class="orange-bar-left"></div>
           <div id="overviewDoctors"><p style="color:#94a3b8; text-align:center; padding:20px 0;">Loading doctors snapshot...</p></div>
         </div>
+
+        <div class="card" style="margin-top:24px;">
+          <div class="section-title" style="margin-bottom:6px;">Register Administrator</div>
+          <div class="orange-bar-left"></div>
+          <p class="section-subtitle">Create an admin account. Only a signed-in administrator can register additional admins.</p>
+          <div id="regAdminAlert"></div>
+          <form id="regAdminForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="a-name">Full Name <span class="req">*</span></label>
+                <input class="form-input" type="text" id="a-name" maxlength="120" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="a-email">Email Address <span class="req">*</span></label>
+                <input class="form-input" type="email" id="a-email" maxlength="254" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="a-pass">Password <span class="req">*</span></label>
+                <input class="form-input" type="password" id="a-pass" minlength="6" required />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-orange" id="regAdminBtn">Register Administrator &rarr;</button>
+          </form>
+        </div>
       </div>
 
       <!-- TAB 2: DOCTORS MANAGEMENT & REGISTER DOCTOR -->
@@ -162,6 +186,29 @@
   <script>
     if (!guardPage('admin')) throw new Error('redirect');
     renderNavbar('navbar');
+
+    $('#regAdminForm').onsubmit = async (e) => {
+      e.preventDefault();
+      clearAlert($('#regAdminAlert'));
+      const btn = $('#regAdminBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Registering...';
+
+      try {
+        const result = await api('POST', '/api/admin/register-admin', {
+          name: $('#a-name').value.trim(),
+          email: $('#a-email').value.trim(),
+          password: $('#a-pass').value
+        });
+        showAlert($('#regAdminAlert'), 'success', result.message);
+        $('#regAdminForm').reset();
+      } catch (err) {
+        showAlert($('#regAdminAlert'), 'error', err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Register Administrator →';
+      }
+    };
 
     $$('.tab').forEach(t => {
       t.onclick = () => {
