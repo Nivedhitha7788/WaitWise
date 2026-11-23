@@ -142,7 +142,9 @@
   <script>
     function updateClock() {
       const now = new Date();
-      document.getElementById('liveClock').textContent = now.toLocaleTimeString(I18n.locale);
+      document.getElementById('liveClock').textContent = now.toLocaleTimeString(I18n.locale, {
+        hour12: I18n.language !== 'ta'
+      });
     }
     setInterval(updateClock, 1000);
     updateClock();

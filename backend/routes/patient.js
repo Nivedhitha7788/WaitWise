@@ -215,6 +215,18 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
     if (!doctor || doctor.retired) return res.status(404).json({ success: false, message: 'Doctor not found.' });
 
     const dayName = getDayName(date);
+    if (!doctor.isAvailable) {
+      return res.json({
+        success: true,
+        slots: [],
+        allSlots: [],
+        bookedSlots: [],
+        sessions: [],
+        dayName,
+        message: `Doctor is currently unavailable: ${doctor.unavailabilityReason || 'Visiting existing patients in ward (In-Patient rounds)'}`
+      });
+    }
+
     const sessions = getDaySessions(doctor, dayName);
     if (!sessions.length) return res.json({ success: true, slots: [], sessions: [], message: `No consultation slots configured on ${dayName}.` });
 

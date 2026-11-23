@@ -298,20 +298,23 @@
       let reason = '';
       if (currentAvail) {
         reason = window.prompt(
-          'Reason for doctor unavailability (e.g. Visiting existing patients in ward (In-Patient rounds)):',
-          'Visiting existing patients in ward (In-Patient rounds)'
+          I18n.t('Reason for doctor unavailability (e.g. Visiting existing patients in ward (In-Patient rounds)):'),
+          I18n.t('Visiting existing patients in ward (In-Patient rounds)')
         );
         if (reason === null) return;
       }
+      const defaultReason = I18n.t('Visiting existing patients in ward (In-Patient rounds)');
       try {
         await api('PATCH', `/api/admin/doctors/${doctorId}/availability`, {
           isAvailable: !currentAvail,
-          unavailabilityReason: reason
+          unavailabilityReason: I18n.language === 'ta' && reason === defaultReason
+            ? 'Visiting existing patients in ward (In-Patient rounds)'
+            : reason
         });
         await loadDoctors();
         await loadStats();
       } catch (err) {
-        alert(err.message || 'Failed to update availability.');
+        alert(I18n.t(err.message || 'Failed to update availability.'));
       }
     }
 
@@ -334,10 +337,10 @@
                   <td><div style="width:38px; height:38px; background:rgba(255,255,255,0.06); border:1px solid var(--accent-orange); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--accent-orange); font-family:var(--font-serif); font-weight:700; font-size:16px;">#${a.tokenNumber}</div></td>
                   <td><div style="font-weight:700; color:#ffffff;">${a.patient?.name || 'Patient'}</div><div style="font-size:12px; color:#64748b;">${a.patient?.phone || a.patient?.email || ''}</div></td>
                   <td><div style="font-family:var(--font-serif); font-weight:700;">${a.doctor?.name || 'Doctor'}</div><div style="font-size:12px; color:var(--accent-orange);">${a.doctor?.specialization || ''}</div></td>
-                  <td>${fmtDate(a.appointmentDate)}</td>
+                  <td data-appointment-date="${escapeHTML(a.appointmentDate)}">${fmtDate(a.appointmentDate)}</td>
                   <td><b>${a.session || ''} Session · ${a.slot}</b></td>
                   <td>${statusBadge(a.status)}</td>
-                  <td><span style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString(I18n.locale,{hour:'2-digit',minute:'2-digit'})}` : a.status === 'waiting' ? `Est. ${formatWaitTime(a.estimatedWaitTime)}` : 'Active'}</span></td>
+                  <td><span ${a.status === 'completed' && a.completedAt ? `data-completed-at="${escapeHTML(a.completedAt)}"` : ''} style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString(I18n.locale,{hour:'2-digit',minute:'2-digit',hour12:I18n.language !== 'ta'})}` : a.status === 'waiting' ? `Est. ${formatWaitTime(a.estimatedWaitTime)}` : 'Active'}</span></td>
                 </tr>
               `).join('')}</tbody>
             </table>
@@ -351,15 +354,29 @@
     $('#seedBtn').onclick = async () => {
       try {
         const res = await api('GET', '/api/admin/seed');
-        alert(res.message);
+        alert(I18n.t(res.message));
         loadStats();
         loadDoctors();
         loadAppointments();
       } catch (e) {
-        alert('Seed error: ' + e.message);
+        alert(`${I18n.t('Seed error:')} ${I18n.t(e.message)}`);
       }
     };
 
+    function refreshAppointmentDates() {
+      $$('[data-appointment-date]').forEach(node => {
+        node.textContent = fmtDate(node.dataset.appointmentDate);
+      });
+      $$('[data-completed-at]').forEach(node => {
+        node.textContent = `Done ${new Date(node.dataset.completedAt).toLocaleTimeString(I18n.locale, {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: I18n.language !== 'ta'
+        })}`;
+      });
+    }
+
+    I18n.onChange(refreshAppointmentDates);
     $('#refreshBtn').onclick = () => { loadStats(); loadDoctors(); loadAppointments(); };
     $('#aptRefreshBtn').onclick = loadAppointments;
 

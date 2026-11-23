@@ -400,6 +400,22 @@ async function verifyAll() {
   assert.strictEqual(updatedDoctor.isAvailable, false);
   assert.strictEqual(updatedDoctor.unavailabilityReason, 'Visiting existing patients in ward (In-Patient rounds)');
 
+  const unavailableSlots = await mockRequest(app, 'GET', `/api/patient/doctors/${targetDoctor._id}/slots?date=${todayStr}`, null, {
+    authorization: `Bearer ${patientToken}`
+  });
+  assert.strictEqual(unavailableSlots.statusCode, 200);
+  assert.deepStrictEqual(unavailableSlots.body.slots, []);
+  assert.deepStrictEqual(unavailableSlots.body.sessions, []);
+
+  const unavailableBooking = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    date: todayStr,
+    session: 'FN',
+    slot: '09:00 - 10:00'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(unavailableBooking.statusCode, 400);
+  assert.match(unavailableBooking.body.message, /^Doctor is currently unavailable:/);
+
   console.log('\n=== TEST 13: ADMIN OVERALL VIEW ===');
   const adminDash = await mockRequest(app, 'GET', '/api/admin/dashboard', null, {
     authorization: `Bearer ${adminToken}`

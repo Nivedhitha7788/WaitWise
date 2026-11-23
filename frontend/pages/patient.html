@@ -30,11 +30,6 @@
         </div>
       </div>
 
-      <!-- OP Policy / Emergency Warning Banner -->
-      <div class="notice-banner">
-        🏥 <strong>Strictly Outpatient (OP) Consultations.</strong> Physical hospital presence is required <b>ONLY when your token is called</b>. For trauma or emergency care, proceed to the <strong>Hospital Emergency Ward</strong>.
-      </div>
-
       <!-- Turn Alert Notification Banner (Hidden until turn arrives) -->
       <div id="turnAlertBanner" class="alert alert-success hidden" style="font-size:16px; font-weight:700; text-align:center; padding:18px; margin-bottom:26px; border:2px solid #10b981; animation: pulse 1.5s infinite;">
         🔔 YOUR TURN HAS ARRIVED! Please enter the Doctor's OP Consultation Room immediately.
@@ -63,9 +58,9 @@
             <!-- Doctor availability preview -->
             <div id="doctorInfo" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:2px; padding:14px 18px; margin-bottom:20px; font-size:13.5px;"></div>
 
-            <div class="form-group">
+            <div class="form-group" id="dateSection" style="display:none;">
               <label class="form-label">Select Consultation Date <span class="req">*</span></label>
-              <input class="form-input" type="date" id="dateInput" style="max-width:240px;" />
+              <input class="form-input" type="date" id="dateInput" disabled style="max-width:240px;" />
             </div>
 
             <div class="form-group" id="slotsSection" style="display:none;">
@@ -157,6 +152,12 @@
       }
     }
 
+    function refreshAppointmentDates() {
+      $$('[data-appointment-date]').forEach(node => {
+        node.textContent = `Date: ${fmtDate(node.dataset.appointmentDate)}`;
+      });
+    }
+
     $('#enableNotifyBtn').onclick = async () => {
       const statuses = [];
       let permissionRequest = null;
@@ -225,8 +226,12 @@
       $('#turnAlertBanner').classList.remove('hidden');
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
-          new Notification('WaitWise: YOUR TURN HAS ARRIVED!', {
-            body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
+          const localizedDoctorName = I18n.t(docName);
+          const body = I18n.language === 'ta'
+            ? `டோக்கன் #${tokenNum} (${localizedDoctorName}). இப்போது ஆலோசனை அறைக்குச் செல்லவும்.`
+            : `Token #${tokenNum} for ${localizedDoctorName}. Please enter the OP Consultation room now.`;
+          new Notification(I18n.t('WaitWise: YOUR TURN HAS ARRIVED!'), {
+            body
           });
         } catch (err) {
           console.error('Could not show the turn notification:', err);
@@ -249,6 +254,7 @@
     let doctors = [];
     let selectedSlot = null;
     let selectedSession = null;
+    let slotsRequestId = 0;
     let trackerInterval = null;
     let trackerCountdown = 10;
     let currentTrackingId = null;
@@ -261,58 +267,108 @@
         const selectedDoctor = sel.value;
 
         if (!doctors.length) {
-          sel.innerHTML = `<option value="">${I18n.t('No doctors available yet')}</option>`;
+          sel.innerHTML = '<option value="">No doctors available yet</option>';
+          $('#doctorInfo').style.display = 'none';
+          clearBookingOptions();
           return;
         }
 
-        sel.innerHTML = `<option value="">${I18n.t('— Select an OP Doctor —')}</option>` +
+        sel.innerHTML = '<option value="">— Select an OP Doctor —</option>' +
           doctors.map(d => {
-            const availText = I18n.t(d.isAvailable ? '✓ Available' : '⚠️ Unavailable');
-            const reason = I18n.t(d.unavailabilityReason || 'Visiting ward');
+            const availText = d.isAvailable ? '✓ Available' : '⚠️ Unavailable';
+            const reason = d.unavailabilityReason || 'Visiting ward';
             const availability = d.isAvailable ? availText : `${availText} (${reason})`;
-            return `<option value="${d._id}">${d.name} — ${I18n.t(d.specialization)} [${availability}]</option>`;
+            return `<option value="${d._id}">${d.name} — ${d.specialization} [${availability}]</option>`;
           }).join('');
         sel.value = selectedDoctor;
+        if (sel.value) {
+          loadSlots();
+        } else {
+          clearBookingOptions();
+        }
       } catch (err) {
         console.error(err);
+        $('#doctorInfo').style.display = 'none';
+        clearBookingOptions();
       }
     }
 
-    async function loadSlots() {
-      const docId = $('#doctorSelect').value;
-      const date  = $('#dateInput').value;
+    function clearBookingOptions() {
+      slotsRequestId += 1;
       selectedSlot = null;
       selectedSession = null;
       $('#selectedSlot').value = '';
+      $('#dateInput').value = '';
+      $('#dateInput').disabled = true;
+      $('#dateSection').style.display = 'none';
+      $('#slotsSection').style.display = 'none';
+      $('#slotsWrap').innerHTML = '';
       $('#bookBtn').disabled = true;
-      clearAlert($('#bookAlert'));
+    }
 
-      if (!docId || !date) {
-        $('#slotsSection').style.display = 'none';
+    function showUnavailableDoctor(doc) {
+      const reason = doc.unavailabilityReason || 'Visiting existing patients in ward (In-Patient rounds)';
+      doc.isAvailable = false;
+      doc.unavailabilityReason = reason;
+      const info = $('#doctorInfo');
+      info.style.display = '';
+      info.style.background = 'rgba(239, 68, 68, 0.12)';
+      info.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization}<br><span style="color:#f87171;font-weight:700;">⚠️ Currently Unavailable: ${reason}</span>`;
+      const selectedOption = $('#doctorSelect').selectedOptions[0];
+      if (selectedOption) {
+        selectedOption.textContent = `${doc.name} — ${doc.specialization} [⚠️ Unavailable (${reason})]`;
+      }
+      clearBookingOptions();
+    }
+
+    async function loadSlots() {
+      const requestId = ++slotsRequestId;
+      const docId = $('#doctorSelect').value;
+      const doc = doctors.find(d => String(d._id) === String(docId));
+      clearAlert($('#bookAlert'));
+      $('#bookBtn').disabled = true;
+
+      if (!docId || !doc) {
+        clearBookingOptions();
         $('#doctorInfo').style.display = 'none';
         return;
       }
 
-      const doc = doctors.find(d => String(d._id) === String(docId));
-      if (doc) {
-        const info = $('#doctorInfo');
-        info.style.display = '';
-        if (doc.isAvailable) {
-          info.style.background = 'rgba(16, 185, 129, 0.1)';
-          info.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-          info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
-        } else {
-          info.style.background = 'rgba(239, 68, 68, 0.12)';
-          info.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-          info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization}<br><span style="color:#f87171;font-weight:700;">⚠️ Currently Unavailable: ${doc.unavailabilityReason || 'Visiting existing patients in ward'}</span>`;
-        }
+      const info = $('#doctorInfo');
+      info.style.display = '';
+      if (!doc.isAvailable) {
+        showUnavailableDoctor(doc);
+        return;
       }
 
+      info.style.background = 'rgba(16, 185, 129, 0.1)';
+      info.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
+      $('#dateInput').disabled = false;
+      $('#dateSection').style.display = '';
+      if (!$('#dateInput').value) $('#dateInput').value = todayStr;
+      const date = $('#dateInput').value;
+      selectedSlot = null;
+      selectedSession = null;
+      $('#selectedSlot').value = '';
+      if (!date) {
+        $('#slotsSection').style.display = 'none';
+        $('#slotsWrap').innerHTML = '';
+        return;
+      }
       $('#slotsSection').style.display = '';
       $('#slotsWrap').innerHTML = '<p style="color:#94a3b8;font-size:13px">Checking slots...</p>';
 
       try {
         const res = await api('GET', `/api/patient/doctors/${docId}/slots?date=${date}`);
+        if (requestId !== slotsRequestId || $('#doctorSelect').value !== docId) return;
+        const unavailablePrefix = 'Doctor is currently unavailable: ';
+        if (typeof res.message === 'string' && res.message.startsWith(unavailablePrefix)) {
+          doc.unavailabilityReason = res.message.slice(unavailablePrefix.length);
+          showUnavailableDoctor(doc);
+          return;
+        }
         const sessions = res.sessions || [];
         if (!sessions.some(session => session.slots.length)) {
           $('#slotsWrap').innerHTML = `<p style="color:#94a3b8;font-size:13px">${res.message || 'No available slots for this date.'}</p>`;
@@ -353,6 +409,7 @@
           };
         });
       } catch (err) {
+        if (requestId !== slotsRequestId || $('#doctorSelect').value !== docId) return;
         $('#slotsWrap').innerHTML = `<p style="color:#ef4444;font-size:13px">${err.message}</p>`;
       }
     }
@@ -435,7 +492,7 @@
                   <div>
                     <div style="font-family:var(--font-serif);font-weight:700;font-size:19px;color:#ffffff">${doc.name || 'Doctor'}</div>
                     <div style="font-size:13px;color:var(--text-muted)">${doc.specialization || 'Psychiatry Clinic'} &bull; ${a.session || ''} Session: <b style="color:#fff;">${a.slot}</b></div>
-                    <div style="font-size:12px;color:#64748b">Date: ${fmtDate(a.appointmentDate)}</div>
+                    <div data-appointment-date="${escapeHTML(a.appointmentDate)}" style="font-size:12px;color:#64748b">Date: ${fmtDate(a.appointmentDate)}</div>
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -511,12 +568,12 @@
     });
 
     async function cancelApt(id) {
-      if (!confirm('Cancel this appointment token?')) return;
+      if (!confirm(I18n.t('Cancel this appointment token?'))) return;
       try {
         await api('DELETE', `/api/patient/appointments/${id}`);
         loadMyAppointments();
       } catch (err) {
-        alert(err.message);
+        alert(I18n.t(err.message));
       }
     }
 
@@ -619,7 +676,7 @@
     $('#refreshTokenBtn').onclick = () => { fetchTokenStatus(); trackerCountdown = 10; };
     $('#refreshAptsBtn').onclick = loadMyAppointments;
 
-    I18n.onChange(loadDoctors);
+    I18n.onChange(refreshAppointmentDates);
     loadDoctors();
     loadMyAppointments();
   </script>
