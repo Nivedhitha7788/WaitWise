@@ -84,6 +84,24 @@
 
       <!-- TAB 2: MY TOKENS & LIVE FREQUENT TRACKING -->
       <div id="tab-myapts" class="hidden">
+        <form id="notificationPreferencesForm" class="card" style="margin-bottom:24px;">
+          <h2 style="font-family:var(--font-serif);font-size:20px;color:#ffffff;">Appointment notifications</h2>
+          <p style="font-size:13px;color:var(--text-muted);margin:8px 0 14px;">
+            Optional: receive a booking confirmation and a message when your turn starts. If enabled, your contact detail and token/date/slot are sent to Resend (email) or Twilio (SMS). Clinical notes are never shared.
+          </p>
+          <label style="display:block;margin:10px 0;color:#ffffff;">
+            <input id="emailNotification" type="checkbox" />
+            Email notifications
+            <span id="emailNotificationStatus" style="color:var(--text-muted);font-size:12px;"></span>
+          </label>
+          <label style="display:block;margin:10px 0;color:#ffffff;">
+            <input id="smsNotification" type="checkbox" />
+            SMS notifications
+            <span id="smsNotificationStatus" style="color:var(--text-muted);font-size:12px;"></span>
+          </label>
+          <button class="btn btn-outline-orange btn-sm" type="submit">Save notification preferences</button>
+          <div id="notificationPreferencesAlert" aria-live="polite" style="margin-top:10px;"></div>
+        </form>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
           <div>
             <h2 style="font-family:var(--font-serif); font-size:24px; color:#ffffff;">Your Booked OP Tokens</h2>
@@ -167,6 +185,45 @@
           body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
         });
       }
+    }
+
+    async function loadNotificationPreferences() {
+      const form = $('#notificationPreferencesForm');
+      try {
+        const { preferences, availability } = await api('GET', '/api/patient/notification-preferences');
+        $('#emailNotification').checked = preferences.email === true;
+        $('#smsNotification').checked = preferences.sms === true;
+        $('#emailNotification').disabled = !availability.email && !preferences.email;
+        $('#smsNotification').disabled = !availability.sms && !preferences.sms;
+        $('#emailNotificationStatus').textContent = availability.email ? '' : ' (not configured by the clinic)';
+        $('#smsNotificationStatus').textContent = availability.sms ? '' : ' (not configured by the clinic)';
+      } catch (err) {
+        showAlert($('#notificationPreferencesAlert'), 'error', err.message);
+        form.querySelector('button[type="submit"]').disabled = true;
+      }
+    }
+
+    $('#notificationPreferencesForm').onsubmit = async e => {
+      e.preventDefault();
+      const button = e.currentTarget.querySelector('button[type="submit"]');
+      button.disabled = true;
+      try {
+        await api('PATCH', '/api/patient/notification-preferences', {
+          email: $('#emailNotification').checked,
+          sms: $('#smsNotification').checked
+        });
+        showAlert($('#notificationPreferencesAlert'), 'success', 'Notification preferences saved.');
+      } catch (err) {
+        showAlert($('#notificationPreferencesAlert'), 'error', err.message);
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    function notificationSummary(notifications) {
+      return Object.values(notifications || {})
+        .map(result => escapeHTML(result.message))
+        .join('<br>');
     }
 
     // Tabs
@@ -317,8 +374,9 @@
           doctorId: docId, date, session: selectedSession, slot: selectedSlot
         });
         const a = res.appointment;
+        const notificationStatus = notificationSummary(res.notifications);
         showAlert($('#bookAlert'), 'success',
-          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.`);
+          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.${notificationStatus ? `<br>${notificationStatus}` : ''}`);
 
         selectedSlot = null;
         await loadSlots();
@@ -555,6 +613,7 @@
 
     I18n.onChange(loadDoctors);
     loadDoctors();
+    loadNotificationPreferences();
     loadMyAppointments();
   </script>
 </body>

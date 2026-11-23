@@ -323,8 +323,14 @@
     async function updateStatus(id, status) {
       clearAlert($('#alertBox'));
       try {
-        await api('PATCH', `/api/doctor/appointments/${id}/status`, { status });
+        const result = await api('PATCH', `/api/doctor/appointments/${id}/status`, { status });
         await loadQueue();
+        const notificationIssues = Object.values(result.notifications || {})
+          .filter(notification => notification.status !== 'accepted')
+          .map(notification => escapeHTML(notification.message));
+        if (notificationIssues.length) {
+          showAlert($('#alertBox'), 'error', notificationIssues.join('<br>'));
+        }
       } catch (err) {
         showAlert($('#alertBox'), 'error', err.message);
       }

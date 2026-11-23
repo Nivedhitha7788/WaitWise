@@ -5,6 +5,7 @@ const { requireDoctor } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
 const { SESSION_SLOTS } = require('../utils/clinicConfig');
 const { calculateEstimatedWaitTime } = require('../utils/waitTime');
+const { dispatchAppointmentNotifications } = require('../services/notifications');
 
 async function recalculateQueue(doctorId, appointmentDate) {
   const appointments = getDoctorCol(doctorId, 'appointments');
@@ -129,7 +130,29 @@ router.patch('/appointments/:id/status', requireDoctor(), async (req, res) => {
     await appointments.updateOne({ _id: apt._id }, { $set: update });
     await recalculateQueue(req.user.id, apt.appointmentDate);
 
-    res.json({ success: true, message: `Status updated to ${status}. Queue recalculation complete.` });
+    let notifications = {};
+    if (status === 'in-consultation' && apt.status !== 'in-consultation') {
+      const patient = await getCol('users').findOne(
+        { _id: ObjectId.isValid(String(apt.patientId)) ? new ObjectId(String(apt.patientId)) : apt.patientId, role: 'patient' },
+        { projection: { email: 1, phone: 1, notificationPreferences: 1 } }
+      );
+      if (!patient) {
+        console.error('Patient account not found for consultation notification.');
+        notifications = { status: 'unavailable', message: 'Patient account not found; no notification was sent.' };
+      } else {
+        notifications = await dispatchAppointmentNotifications({
+          patient,
+          appointment: apt,
+          event: 'turn'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Status updated to ${status}. Queue recalculation complete.`,
+      notifications
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error.' });
