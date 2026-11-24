@@ -3,7 +3,13 @@ const router = express.Router();
 const { ObjectId, getCol, getDoctorCol } = require('../db/connection');
 const { requirePatient } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
-const { SESSION_SLOTS, isPastClinicSlot, CONSULTATION_MINUTES } = require('../utils/clinicConfig');
+const {
+  SESSION_SLOTS,
+  isPastClinicSlot,
+  CONSULTATION_MINUTES,
+  getDoctorBookingPriority,
+  getClinicDateKey
+} = require('../utils/clinicConfig');
 const { findAppointmentsAcrossDoctors, findAppointmentAcrossDoctors } = require('../utils/appointmentStore');
 const { calculateEstimatedWaitTime, refreshEstimatedWaitTime } = require('../utils/waitTime');
 
@@ -90,6 +96,55 @@ function getDaySessions(doctor, dayName) {
 
   // Keep the new fixed-session API usable during rolling upgrades from legacy schedules.
   return SESSION_SLOTS;
+}
+
+async function getAvailableDoctorSlots(doctor, date) {
+  const sessions = getDaySessions(doctor, getDayName(date));
+  const allSlots = sessions.flatMap(session => session.slots);
+  if (!allSlots.length) {
+    return { sessions, allSlots, bookedSlots: [], availableSlots: [], fullyBooked: false };
+  }
+
+  const { start, end } = getDayRange(date);
+  const doctorId = String(doctor._id);
+  const booked = await getDoctorCol(doctorId, 'appointments').find({
+    doctorId,
+    appointmentDate: { $gte: start, $lte: end },
+    status: { $ne: 'cancelled' }
+  }).toArray();
+  const bookedSlots = booked.map(appointment => appointment.slot);
+  const availableSlots = allSlots.filter(slot =>
+    !bookedSlots.includes(slot) && !isPastClinicSlot(date, slot)
+  );
+  const fullyBooked = allSlots.every(slot => bookedSlots.includes(slot));
+  return { sessions, allSlots, bookedSlots, availableSlots, fullyBooked };
+}
+
+async function getDoctorsWithBookingAvailability(date) {
+  const doctors = await getCol('doctors')
+    .find({ retired: { $ne: true } }, { projection: { password: 0 } })
+    .toArray();
+  doctors.sort((a, b) =>
+    getDoctorBookingPriority(a) - getDoctorBookingPriority(b) ||
+    String(a._id).localeCompare(String(b._id))
+  );
+
+  let previousDoctorsFull = true;
+  for (const doctor of doctors) {
+    const { availableSlots, fullyBooked } = await getAvailableDoctorSlots(doctor, date);
+    doctor.availableSlotsCount = availableSlots.length;
+    doctor.bookingFullyBooked = fullyBooked;
+    doctor.bookingEnabled = previousDoctorsFull && doctor.isAvailable && availableSlots.length > 0;
+    doctor.bookingBlockReason = !previousDoctorsFull
+      ? 'Appointments with the primary doctor must be filled first.'
+      : !doctor.isAvailable
+        ? 'Doctor is currently unavailable.'
+        : availableSlots.length === 0
+          ? 'No appointment slots are available for this date.'
+          : '';
+    previousDoctorsFull = previousDoctorsFull && fullyBooked;
+  }
+  return doctors;
 }
 
 async function recalculateQueue(doctorId, appointmentDate) {
@@ -193,7 +248,10 @@ router.get('/doctors', requirePatient(), async (req, res) => {
 // GET /api/patient/doctors/all — all doctors (includes availability status & ward visit reason)
 router.get('/doctors/all', requirePatient(), async (req, res) => {
   try {
-    const doctors = await getCol('doctors').find({ retired: { $ne: true } }, { projection: { password: 0 } }).toArray();
+    const date = typeof req.query.date === 'string'
+      ? req.query.date
+      : getClinicDateKey();
+    const doctors = await getDoctorsWithBookingAvailability(date);
     res.json({ success: true, doctors });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -231,28 +289,37 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
       });
     }
 
-    const sessions = getDaySessions(doctor, dayName);
-    if (!sessions.length) return res.json({ success: true, slots: [], sessions: [], message: `No consultation slots configured on ${dayName}.` });
+    const doctorsWithAvailability = await getDoctorsWithBookingAvailability(date);
+    const bookingDoctor = doctorsWithAvailability.find(item => String(item._id) === docIdStr);
+    if (!bookingDoctor?.bookingEnabled) {
+      return res.json({
+        success: true,
+        slots: [],
+        allSlots: [],
+        bookedSlots: [],
+        sessions: [],
+        dayName,
+        bookingEnabled: false,
+        message: bookingDoctor?.bookingBlockReason || `No consultation slots configured on ${dayName}.`
+      });
+    }
 
-    const allSlots = sessions.flatMap(session => session.slots);
-    const { start, end } = getDayRange(date);
-
-    const booked = await getDoctorCol(docIdStr, 'appointments').find({
-      doctorId: docIdStr,
-      appointmentDate: { $gte: start, $lte: end },
-      status: { $ne: 'cancelled' }
-    }).toArray();
-
-    const bookedSlots = booked.map(a => a.slot);
-    const available = allSlots.filter(s => !bookedSlots.includes(s) && !isPastClinicSlot(date, s));
-
-    const availableSet = new Set(available);
+    const { sessions, allSlots, bookedSlots, availableSlots } = await getAvailableDoctorSlots(doctor, date);
+    const availableSet = new Set(availableSlots);
     const availableSessions = sessions.map(session => ({
       code: session.code,
       slots: session.slots.filter(slot => availableSet.has(slot))
     }));
 
-    res.json({ success: true, slots: available, allSlots, bookedSlots, sessions: availableSessions, dayName });
+    res.json({
+      success: true,
+      slots: availableSlots,
+      allSlots,
+      bookedSlots,
+      sessions: availableSessions,
+      dayName,
+      bookingEnabled: true
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -294,6 +361,15 @@ router.post('/book', requirePatient(), async (req, res) => {
     }
     if (isPastClinicSlot(date, slot)) {
       return res.status(400).json({ success: false, message: 'This consultation time has already passed.' });
+    }
+
+    const doctorsWithAvailability = await getDoctorsWithBookingAvailability(date);
+    const bookingDoctor = doctorsWithAvailability.find(item => String(item._id) === docIdStr);
+    if (!bookingDoctor?.bookingEnabled) {
+      return res.status(409).json({
+        success: false,
+        message: bookingDoctor?.bookingBlockReason || 'This doctor is not accepting appointments for the selected date yet.'
+      });
     }
 
     // Allow only one active appointment per patient and doctor across all dates.

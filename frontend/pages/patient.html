@@ -30,11 +30,6 @@
         </div>
       </div>
 
-      <!-- Turn Alert Notification Banner (Hidden until turn arrives) -->
-      <div id="turnAlertBanner" class="alert alert-success hidden" style="font-size:16px; font-weight:700; text-align:center; padding:18px; margin-bottom:26px; border:2px solid #10b981; animation: pulse 1.5s infinite;">
-        🔔 YOUR TURN HAS ARRIVED! Please enter the Doctor's OP Consultation Room immediately.
-      </div>
-
       <!-- Navigation Tabs (Besloor Orange Style) -->
       <div class="tabs">
         <button type="button" class="tab active" data-tab="book">📅 Book OP Consultation Slot</button>
@@ -86,7 +81,10 @@
             <div class="orange-bar-left"></div>
             <p style="font-size:13px; color:var(--text-muted);">Queue positions advance automatically as doctors finish past consultations.</p>
           </div>
-          <button class="btn btn-outline btn-sm" id="refreshAptsBtn">🔄 Refresh Tokens</button>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-outline-orange btn-sm" id="enableQueueNotificationsBtn">🔔 Enable Queue Notifications</button>
+            <button class="btn btn-outline btn-sm" id="refreshAptsBtn">🔄 Refresh Tokens</button>
+          </div>
         </div>
         <div id="aptsList"><p style="color:#94a3b8; text-align:center; padding:30px 0;">Loading tokens...</p></div>
       </div>
@@ -118,6 +116,7 @@
   </footer>
 
   <script src="/js/api.js"></script>
+  <script src="/js/queueNotifications.js"></script>
   <script>
     if (!guardPage('patient')) throw new Error('redirect');
     renderNavbar('navbar');
@@ -218,12 +217,33 @@
       }
     };
 
+    const enableQueueNotificationsBtn = $('#enableQueueNotificationsBtn');
+    if (!QueueNotifications.desktopSupported || QueueNotifications.desktopPermission === 'granted') {
+      enableQueueNotificationsBtn.style.display = 'none';
+    } else if (QueueNotifications.desktopPermission === 'denied') {
+      enableQueueNotificationsBtn.textContent = 'Desktop Queue Notifications Blocked';
+      enableQueueNotificationsBtn.disabled = true;
+    }
+    enableQueueNotificationsBtn.onclick = async () => {
+      try {
+        const permission = await QueueNotifications.requestDesktopPermission();
+        if (permission === 'granted') {
+          enableQueueNotificationsBtn.style.display = 'none';
+        } else {
+          enableQueueNotificationsBtn.textContent = 'Desktop Queue Notifications Blocked';
+          enableQueueNotificationsBtn.disabled = true;
+        }
+      } catch (error) {
+        console.error('Unable to enable desktop queue notifications:', error);
+        alert('Desktop queue notifications could not be enabled. In-app notifications will still appear.');
+      }
+    };
+
     function triggerTurnNotification(docName, tokenNum) {
       const notificationKey = `${currentTrackingId}:${tokenNum}`;
       if (alertedTokens.has(notificationKey)) return;
       alertedTokens.add(notificationKey);
       playTurnChime();
-      $('#turnAlertBanner').classList.remove('hidden');
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
           const localizedDoctorName = I18n.t(docName);
@@ -261,10 +281,11 @@
 
     async function loadDoctors() {
       try {
-        const res = await api('GET', '/api/patient/doctors/all');
+        const date = $('#dateInput').value || todayStr;
+        const res = await api('GET', `/api/patient/doctors/all?date=${encodeURIComponent(date)}`);
         doctors = res.doctors || [];
         const sel = $('#doctorSelect');
-        const selectedDoctor = sel.value;
+        const currentSelection = sel.value;
 
         if (!doctors.length) {
           sel.innerHTML = '<option value="">No doctors available yet</option>';
@@ -275,12 +296,19 @@
 
         sel.innerHTML = '<option value="">— Select an OP Doctor —</option>' +
           doctors.map(d => {
-            const availText = d.isAvailable ? '✓ Available' : '⚠️ Unavailable';
-            const reason = d.unavailabilityReason || 'Visiting ward';
-            const availability = d.isAvailable ? availText : `${availText} (${reason})`;
-            return `<option value="${d._id}">${d.name} — ${d.specialization} [${availability}]</option>`;
+            const availability = !d.isAvailable
+              ? `Unavailable${d.unavailabilityReason ? ` — ${d.unavailabilityReason}` : ''}`
+              : d.availableSlotsCount === 0
+                ? d.bookingFullyBooked ? 'Fully booked' : 'No bookable slots on this date'
+                : d.bookingEnabled
+                  ? `${d.availableSlotsCount} slots available`
+                  : 'Available after Priya is fully booked';
+            return `<option value="${escapeHTML(d._id)}" ${d.bookingEnabled ? '' : 'disabled'}>${escapeHTML(d.name)} — ${escapeHTML(d.specialization)} [${escapeHTML(availability)}]</option>`;
           }).join('');
-        sel.value = selectedDoctor;
+        const selectedDoctor = doctors.find(d =>
+          String(d._id) === String(currentSelection) && d.bookingEnabled
+        ) || doctors.find(d => d.bookingEnabled);
+        sel.value = selectedDoctor ? String(selectedDoctor._id) : '';
         if (sel.value) {
           loadSlots();
         } else {
@@ -298,9 +326,8 @@
       selectedSlot = null;
       selectedSession = null;
       $('#selectedSlot').value = '';
-      $('#dateInput').value = '';
-      $('#dateInput').disabled = true;
-      $('#dateSection').style.display = 'none';
+      $('#dateInput').disabled = false;
+      $('#dateSection').style.display = '';
       $('#slotsSection').style.display = 'none';
       $('#slotsWrap').innerHTML = '';
       $('#bookBtn').disabled = true;
@@ -337,6 +364,13 @@
 
       const info = $('#doctorInfo');
       info.style.display = '';
+      if (!doc.bookingEnabled) {
+        info.style.background = 'rgba(245, 158, 11, 0.12)';
+        info.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+        info.textContent = doc.bookingBlockReason || 'This doctor is not accepting appointments for the selected date yet.';
+        clearBookingOptions();
+        return;
+      }
       if (!doc.isAvailable) {
         showUnavailableDoctor(doc);
         return;
@@ -363,6 +397,10 @@
       try {
         const res = await api('GET', `/api/patient/doctors/${docId}/slots?date=${date}`);
         if (requestId !== slotsRequestId || $('#doctorSelect').value !== docId) return;
+        if (!res.bookingEnabled) {
+          $('#slotsWrap').innerHTML = `<p style="color:#f59e0b;font-size:13px">${escapeHTML(res.message || 'This doctor is not accepting appointments for the selected date yet.')}</p>`;
+          return;
+        }
         const unavailablePrefix = 'Doctor is currently unavailable: ';
         if (typeof res.message === 'string' && res.message.startsWith(unavailablePrefix)) {
           doc.unavailabilityReason = res.message.slice(unavailablePrefix.length);
@@ -415,11 +453,10 @@
     }
 
     $('#doctorSelect').onchange = loadSlots;
-    $('#dateInput').onchange = loadSlots;
-
     const todayStr = new Date().toISOString().split('T')[0];
     $('#dateInput').min = todayStr;
     $('#dateInput').value = todayStr;
+    $('#dateInput').onchange = loadDoctors;
 
     $('#bookForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -444,7 +481,7 @@
           `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.`);
 
         selectedSlot = null;
-        await loadSlots();
+        await loadDoctors();
 
         setTimeout(() => {
           $$('.tab').forEach(x => x.classList.remove('active'));
@@ -679,6 +716,11 @@
     I18n.onChange(refreshAppointmentDates);
     loadDoctors();
     loadMyAppointments();
+    QueueNotifications.start(async () => {
+      const { appointments } = await api('GET', '/api/patient/appointments');
+      return appointments;
+    });
+    window.addEventListener('beforeunload', QueueNotifications.stop, { once: true });
   </script>
 </body>
 </html>

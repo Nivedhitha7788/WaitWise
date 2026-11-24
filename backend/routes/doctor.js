@@ -2,38 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId, getCol, getDoctorCol } = require('../db/connection');
 const { requireDoctor } = require('../middleware/auth');
-const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
+const { getDayRange, getDayName } = require('../utils/dateHelper');
 const { SESSION_SLOTS } = require('../utils/clinicConfig');
-const { calculateEstimatedWaitTime } = require('../utils/waitTime');
-
-async function recalculateQueue(doctorId, appointmentDate) {
-  const appointments = getDoctorCol(doctorId, 'appointments');
-  const { start, end } = getDayRange(appointmentDate);
-  const docIdStr = String(doctorId);
-
-  const waiting = await appointments.find({
-    doctorId: docIdStr,
-    appointmentDate: { $gte: start, $lte: end },
-    status: 'waiting'
-  }).sort({ tokenNumber: 1 }).toArray();
-  const activeConsultation = await appointments.findOne({
-    doctorId: docIdStr,
-    appointmentDate: { $gte: start, $lte: end },
-    status: 'in-consultation'
-  });
-
-  for (let i = 0; i < waiting.length; i++) {
-    const estimatedWaitTime = calculateEstimatedWaitTime(
-      waiting[i],
-      waiting.slice(0, i),
-      activeConsultation
-    );
-    await appointments.updateOne(
-      { _id: waiting[i]._id },
-      { $set: { queuePosition: i + 1, estimatedWaitTime } }
-    );
-  }
-}
 
 // GET /api/doctor/profile — own profile, consultation time, slots, availability
 router.get('/profile', requireDoctor(), async (req, res) => {
@@ -57,20 +27,36 @@ router.get('/queue', requireDoctor(), async (req, res) => {
   try {
     const appointments = getDoctorCol(req.user.id, 'appointments');
     const users = getCol('users');
-    const { start, end } = getDayRange(new Date());
-    await recalculateQueue(req.user.id, new Date());
-
+    const date = typeof req.query.date === 'string' ? req.query.date : null;
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, message: 'Date must use YYYY-MM-DD format.' });
+    }
+    const selectedDate = date || new Date();
+    const { start, end } = getDayRange(selectedDate);
     const apts = await appointments.find({
       doctorId: String(req.user.id),
       appointmentDate: { $gte: start, $lte: end }
+    }, {
+      projection: {
+        _id: 1,
+        patientId: 1,
+        doctorId: 1,
+        appointmentDate: 1,
+        session: 1,
+        slot: 1,
+        tokenNumber: 1,
+        status: 1,
+        queuePosition: 1,
+        estimatedWaitTime: 1
+      }
     }).sort({ tokenNumber: 1 }).toArray();
 
     const enriched = await Promise.all(apts.map(async a => {
       let patient = null;
       try {
-        patient = await users.findOne({ _id: new ObjectId(String(a.patientId)) }, { projection: { password: 0 } });
+        patient = await users.findOne({ _id: new ObjectId(String(a.patientId)) }, { projection: { _id: 0, name: 1 } });
       } catch (e) {
-        patient = await users.findOne({ _id: String(a.patientId) }, { projection: { password: 0 } });
+        patient = await users.findOne({ _id: String(a.patientId) }, { projection: { _id: 0, name: 1 } });
       }
       return { ...a, patient };
     }));
@@ -82,6 +68,7 @@ router.get('/queue', requireDoctor(), async (req, res) => {
 
     res.json({
       success: true,
+      date: selectedDate,
       appointments: enriched,
       stats: {
         waitingCount,
@@ -93,116 +80,6 @@ router.get('/queue', requireDoctor(), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error loading queue.' });
-  }
-});
-
-// PATCH /api/doctor/appointments/:id/status
-router.patch('/appointments/:id/status', requireDoctor(), async (req, res) => {
-  try {
-    const appointments = getDoctorCol(req.user.id, 'appointments');
-    const { id } = req.params;
-    const { status, notes } = req.body;
-    const valid = ['waiting', 'in-consultation', 'completed', 'cancelled'];
-    if (!valid.includes(status))
-      return res.status(400).json({ success: false, message: 'Invalid status.' });
-
-    let apt = null;
-    try {
-      apt = await appointments.findOne({ _id: new ObjectId(id) });
-    } catch (e) {
-      apt = await appointments.findOne({ _id: id });
-    }
-
-    if (!apt) return res.status(404).json({ success: false, message: 'Appointment not found.' });
-    if (String(apt.doctorId) !== String(req.user.id))
-      return res.status(403).json({ success: false, message: 'Not authorized for this patient appointment.' });
-
-    const update = { status };
-    if (notes !== undefined) update.notes = notes;
-    if (status !== 'waiting') update.estimatedWaitTime = 0;
-    if (status === 'in-consultation') {
-      update.consultationStartedAt = new Date();
-      update.consultationDurationMinutes = Number(apt.consultationDurationMinutes) || 60;
-    }
-    if (status === 'completed') {
-      update.completedAt = new Date();
-      update.consultationCompletedAt = new Date();
-    }
-    if (status === 'waiting') update.consultationStartedAt = null;
-
-    await appointments.updateOne({ _id: apt._id }, { $set: update });
-    await recalculateQueue(req.user.id, apt.appointmentDate);
-
-    res.json({ success: true, message: `Status updated to ${status}. Queue recalculation complete.` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// PATCH /api/doctor/appointments/:id/complete — mark past consultation complete and update queue
-router.patch('/appointments/:id/complete', requireDoctor(), async (req, res) => {
-  try {
-    const appointments = getDoctorCol(req.user.id, 'appointments');
-    const { id } = req.params;
-    const { notes } = req.body;
-
-    let apt = null;
-    try {
-      apt = await appointments.findOne({ _id: new ObjectId(id) });
-    } catch (e) {
-      apt = await appointments.findOne({ _id: id });
-    }
-
-    if (!apt) return res.status(404).json({ success: false, message: 'Appointment not found.' });
-    if (String(apt.doctorId) !== String(req.user.id))
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
-
-    const update = { status: 'completed', completedAt: new Date() };
-    update.consultationCompletedAt = new Date();
-    if (notes) update.notes = notes;
-
-    await appointments.updateOne({ _id: apt._id }, { $set: update });
-    await recalculateQueue(req.user.id, apt.appointmentDate);
-
-    res.json({ success: true, message: 'Consultation completed. Waiting queue positions updated automatically.' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// PATCH /api/doctor/availability — toggle availability with reason (e.g. visiting existing patients in ward)
-router.patch('/availability', requireDoctor(), async (req, res) => {
-  try {
-    const doctors = getCol('doctors');
-    let doctor = null;
-    try {
-      doctor = await doctors.findOne({ _id: new ObjectId(req.user.id) });
-    } catch (e) {
-      doctor = await doctors.findOne({ _id: req.user.id });
-    }
-    if (!doctor) return res.status(404).json({ success: false, message: 'Doctor not found.' });
-
-    const { isAvailable, unavailabilityReason } = req.body;
-    const newAvail = isAvailable !== undefined ? Boolean(isAvailable) : !doctor.isAvailable;
-    const defaultReason = 'Visiting existing patients in ward (In-Patient rounds)';
-    const reasonToSave = newAvail ? '' : (unavailabilityReason || defaultReason);
-
-    await doctors.updateOne(
-      { _id: doctor._id },
-      { $set: { isAvailable: newAvail, unavailabilityReason: reasonToSave } }
-    );
-
-    res.json({
-      success: true,
-      isAvailable: newAvail,
-      unavailabilityReason: reasonToSave,
-      message: `Doctor status set to ${newAvail ? 'Available for OP' : 'Unavailable: ' + reasonToSave}`
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
 

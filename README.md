@@ -11,14 +11,15 @@
 - **Strictly OP (Outpatient) Consultations:** Emergency cases are explicitly guided to the Emergency & Trauma Ward.
 - **Psychiatry Clinic:** The clinic has exactly two active doctors, both configured for General Psychiatry.
 - **Fixed Appointment Sessions:** Monday–Saturday appointments use FN (forenoon) and AN (afternoon) sessions, with six fixed one-hour appointments per doctor per day. Past same-day appointments are hidden and rejected using the clinic's Asia/Kolkata time.
+- **Ordered Doctor Booking:** Patients book Dr. Priya Patel first for each selected date. Dr. Rajesh Sharma's booking option stays disabled until all of Priya's bookable slots on that date are filled.
 - **Multilingual Interface:** Use the language selector to switch between English, Tamil, and Hindi; the choice is saved in the browser and shared across pages.
 - **Contact & Patient Feedback:** Visitors can send contact requests saved in MongoDB, and patients can rate and comment on completed consultations.
 - **Real-Time Digital Token Lifecycle:** 
   - Token generated on slot reservation.
   - Frequent live tracking (auto-updates every 10 seconds).
-  - Web Audio & Browser Notification chimes when the user's turn arrives (`#turnAlertBanner`).
-  - Automatic queue advancement whenever a doctor marks past consultations as completed.
-- **Ward Visits Status:** Doctors can mark themselves unavailable with reasons such as *"Visiting existing patients in ward (In-Patient rounds)"*.
+  - Separate queue-movement in-app and browser notifications when the patient's position advances, plus Web Audio & Browser Notification chimes when the user's turn arrives.
+  - Automatic queue advancement whenever an administrator completes a consultation.
+- **Administrator-Controlled Operations:** Administrators manage appointment queue status and doctor availability. Doctors can sign in to view their appointment schedule only.
 - **MongoDB Persistence:** Patient registrations, doctor identities, contact requests, and feedback are stored in the shared `waitwise` database. Each doctor has a separate `waitwise_doctor_<id-hash>` database for their profile and appointments. On startup, existing shared appointment records are copied into the appropriate doctor database without deleting the source records. The server will not start if MongoDB is unavailable, preventing data from being silently written to a different store.
 
 ### MongoDB Data
@@ -45,13 +46,9 @@
 - Patient ratings and comments are stored in the `feedback` collection and are linked to the completed appointment.
 
 ### 2. 👨‍⚕️ Doctor Interface
-- **Direct Login:** Accessible directly from the homepage and navbar (`/pages/login.html?role=doctor`).
-- **OP Consultation Queue:** Real-time view of today's OP patients sorted by token number.
-- **Consultation Room Controls:**
-  - *"Call In Room"* — transitions patient to `in-consultation`.
-  - *"Complete Consultation"* — records optional clinical notes, marks consultation as completed, and **automatically recalculates queue positions** for all waiting patients.
-- **Availability Management:** Toggle OP availability with preset reasons such as *"Visiting existing patients in ward (In-Patient rounds)"*.
-- **Strict Policy:** Prominent warning that only OP consultations are handled.
+- **Schedule View:** Doctors can sign in directly (`/pages/login.html?role=doctor`) to view their booked OP appointments by date.
+- **Read-Only Access:** Appointment status, clinical notes, and doctor availability are managed by administrators.
+- **Strict Policy:** Only OP consultations are handled.
 
 ### 3. 🔧 Admin Interface
 - **Overall System Dashboard:** Real-time counters for Total Patients, Registered Doctors (2/2), Today's Bookings, Waiting Patients, In-Consultation, and Completed Consultations.
@@ -59,6 +56,7 @@
 - **Doctor Registration (Strict Max 2):** Admin can register doctors up to the two-doctor clinic limit. New accounts automatically use General Psychiatry and the fixed clinic schedule.
 - **Live Doctors Snapshot:** View today's queue load and availability across the two clinic doctors.
 - **Appointments Directory:** Searchable table of all patient bookings, slots, token numbers, and status.
+- **Queue Controls:** Administrators can call patients in, mark no-shows, complete consultations, record optional notes, and update doctor availability.
 
 ---
 

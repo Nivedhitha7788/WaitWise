@@ -8,8 +8,11 @@ function getScheduledStart(appointment) {
   return new Date(`${date}T${time}:00+05:30`);
 }
 
-function calculateEstimatedWaitTime(appointment, waitingAheadAppointments, activeConsultation, now = new Date()) {
+function calculateEstimatedWaitTime(appointment, waitingAheadAppointments = [], activeConsultation = null, now = new Date()) {
   if (appointment.status !== 'waiting') return 0;
+  const aheadAppointments = Array.isArray(waitingAheadAppointments)
+    ? waitingAheadAppointments
+    : [];
 
   let nextAvailableAt = now.getTime();
   if (activeConsultation) {
@@ -20,7 +23,7 @@ function calculateEstimatedWaitTime(appointment, waitingAheadAppointments, activ
     nextAvailableAt = Math.max(now.getTime(), startedAt + duration * 60000);
   }
 
-  for (const waiting of waitingAheadAppointments) {
+  for (const waiting of aheadAppointments) {
     const scheduledStart = getScheduledStart(waiting);
     const startAt = Math.max(nextAvailableAt, scheduledStart ? scheduledStart.getTime() : nextAvailableAt);
     const duration = Number(waiting.consultationDurationMinutes)

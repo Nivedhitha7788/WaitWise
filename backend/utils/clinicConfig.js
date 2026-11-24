@@ -3,6 +3,10 @@ const CONSULTATION_MINUTES = 60;
 const MAX_DOCTORS = 2;
 const CLINIC_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CLINIC_TIME_ZONE = 'Asia/Kolkata';
+const DEFAULT_BOOKING_PRIORITIES = {
+  'dr.patel@waitwise.com': 1,
+  'dr.sharma@waitwise.com': 2
+};
 
 const SESSION_SLOTS = [
   {
@@ -54,6 +58,12 @@ function isPastClinicSlot(date, slot, now = new Date()) {
   return currentMinute >= startHour * 60 + startMinute;
 }
 
+function getDoctorBookingPriority(doctor) {
+  const priority = Number(doctor.bookingPriority);
+  if (Number.isInteger(priority) && priority > 0) return priority;
+  return DEFAULT_BOOKING_PRIORITIES[String(doctor.email || '').toLowerCase()] || Number.MAX_SAFE_INTEGER;
+}
+
 module.exports = {
   CLINIC_SPECIALIZATION,
   CONSULTATION_MINUTES,
@@ -63,5 +73,6 @@ module.exports = {
   SESSION_SLOTS,
   buildAvailableSlots,
   getClinicDateKey,
-  isPastClinicSlot
+  isPastClinicSlot,
+  getDoctorBookingPriority
 };
