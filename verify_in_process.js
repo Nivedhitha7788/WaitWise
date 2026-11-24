@@ -5,6 +5,42 @@ const { getClinicDateKey } = require('./backend/utils/clinicConfig');
 const { getDayRange } = require('./backend/utils/dateHelper');
 const { calculateEstimatedWaitTime } = require('./backend/utils/waitTime');
 
+const waitTimeNow = new Date('2026-11-24T08:30:00+05:30');
+const waitingForElevenThirty = {
+  status: 'waiting',
+  appointmentDate: new Date('2026-11-24T12:00:00+05:30'),
+  slot: '11:30 - 12:30',
+  consultationDurationMinutes: 60
+};
+const waitingAhead = [
+  {
+    appointmentDate: waitingForElevenThirty.appointmentDate,
+    slot: '09:00 - 10:00',
+    consultationDurationMinutes: 60
+  },
+  {
+    appointmentDate: waitingForElevenThirty.appointmentDate,
+    slot: '10:15 - 11:15',
+    consultationDurationMinutes: 60
+  }
+];
+assert.strictEqual(
+  calculateEstimatedWaitTime(waitingForElevenThirty, waitingAhead, null, waitTimeNow),
+  180,
+  'Wait estimate should account for scheduled gaps between consultations.'
+);
+assert.strictEqual(
+  calculateEstimatedWaitTime({
+    status: 'waiting',
+    appointmentDate: new Date('2026-11-28T12:00:00+05:30'),
+    slot: '11:30 - 12:30',
+    tokenNumber: 3,
+    consultationDurationMinutes: 60
+  }, [], null, new Date('2026-11-24T15:06:00+05:30')),
+  5544,
+  'Future appointments should show the time until their scheduled slot even when nobody is ahead.'
+);
+
 function formatLocalDate(date) {
   return [
     date.getFullYear(),
@@ -75,8 +111,8 @@ async function verifyAll() {
   const contactMessagesCol = getCol('contactMessages');
   const doctorEmail = 'dr.sharma@waitwise.com';
   const originalDoctor = await doctorsCol.findOne({ email: doctorEmail });
-  const appointmentsCol = getDoctorCol(originalDoctor._id, 'appointments');
   const secondDoctor = await doctorsCol.findOne({ email: 'dr.patel@waitwise.com' });
+  const appointmentsCol = getDoctorCol(secondDoctor._id, 'appointments');
   const testEmail = `waitwise-test-${Date.now()}@example.com`;
   const contactEmail = `waitwise-contact-${Date.now()}@example.com`;
   let testPatientId = null;
@@ -97,19 +133,19 @@ async function verifyAll() {
       slot: '09:00 - 10:00',
       tokenNumber: 1,
       status: 'waiting'
-    }, 0, null, new Date('2026-11-18T03:25:00.000Z')),
+    }, [], null, new Date('2026-11-18T03:25:00.000Z')),
     5,
     'The first token wait should be the exact time until its scheduled start.'
   );
   assert.strictEqual(
     calculateEstimatedWaitTime(
       { tokenNumber: 3, status: 'waiting', consultationDurationMinutes: 60 },
-      2,
+      [{}, {}],
       { consultationDurationMinutes: 60, consultationStartedAt: new Date('2026-11-18T03:00:00.000Z') },
       new Date('2026-11-18T03:10:00.000Z')
     ),
     170,
-    'Later token waits should include live active consultation time and 60 minutes per patient ahead.'
+    'Waits should include live active consultation time and the duration of waiting patients ahead.'
   );
   assert.strictEqual(
     calculateEstimatedWaitTime(
@@ -186,6 +222,8 @@ async function verifyAll() {
   assert(savedDoctor);
   assert.strictEqual(savedDoctor.name, 'Dr. Rajesh Sharma');
   assert.strictEqual(savedDoctors.find(doctor => doctor.email === 'dr.patel@waitwise.com').name, 'Dr. Priya Patel');
+  assert.strictEqual(savedDoctor.bookingPriority, 2);
+  assert.strictEqual(savedDoctors.find(doctor => doctor.email === 'dr.patel@waitwise.com').bookingPriority, 1);
 
   console.log('\n=== TEST 5: STRICT TWO-DOCTOR LIMIT ENFORCEMENT ===');
   const shortDoctorPassword = await mockRequest(app, 'POST', '/api/admin/register-doctor', {
@@ -250,7 +288,8 @@ async function verifyAll() {
   assert.strictEqual(invalidContact.statusCode, 400);
 
   console.log('\n=== TEST 7: BOOK OP CONSULTATION & TOKEN GENERATION ===');
-  const targetDoctor = docsRes.body.doctors.find(d => d.email === 'dr.sharma@waitwise.com');
+  const targetDoctor = docsRes.body.doctors.find(d => d.email === 'dr.patel@waitwise.com');
+  const secondBookingDoctor = docsRes.body.doctors.find(d => d.email === 'dr.sharma@waitwise.com');
   let appointmentDate = null;
   let todayStr = '';
   for (let offset = 1; offset <= 365; offset++) {
@@ -259,17 +298,75 @@ async function verifyAll() {
     if (candidate.getDay() === 0) continue;
     const candidateKey = formatLocalDate(candidate);
     const { start, end } = getDayRange(candidateKey);
-    const existingCount = await appointmentsCol.countDocuments({
-      doctorId: String(targetDoctor._id),
-      appointmentDate: { $gte: start, $lte: end }
-    });
-    if (existingCount === 0) {
+    const [primaryCount, secondaryCount] = await Promise.all([
+      getDoctorCol(targetDoctor._id, 'appointments').countDocuments({
+        doctorId: String(targetDoctor._id),
+        appointmentDate: { $gte: start, $lte: end }
+      }),
+      getDoctorCol(secondBookingDoctor._id, 'appointments').countDocuments({
+        doctorId: String(secondBookingDoctor._id),
+        appointmentDate: { $gte: start, $lte: end }
+      })
+    ]);
+    if (primaryCount === 0 && secondaryCount === 0) {
       appointmentDate = candidate;
       todayStr = candidateKey;
       break;
     }
   }
   assert(appointmentDate, 'Could not find an unbooked clinic day for integration testing.');
+
+  const initialBookingDoctors = await mockRequest(app, 'GET', `/api/patient/doctors/all?date=${todayStr}`, null, {
+    authorization: `Bearer ${patientToken}`
+  });
+  const primaryBookingOption = initialBookingDoctors.body.doctors.find(doctor => doctor.email === 'dr.patel@waitwise.com');
+  const secondaryBookingOption = initialBookingDoctors.body.doctors.find(doctor => doctor.email === 'dr.sharma@waitwise.com');
+  assert.strictEqual(primaryBookingOption.bookingEnabled, true);
+  assert.strictEqual(secondaryBookingOption.bookingEnabled, false);
+
+  const blockedSecondDoctorSlots = await mockRequest(
+    app,
+    'GET',
+    `/api/patient/doctors/${secondBookingDoctor._id}/slots?date=${todayStr}`,
+    null,
+    { authorization: `Bearer ${patientToken}` }
+  );
+  assert.strictEqual(blockedSecondDoctorSlots.body.bookingEnabled, false);
+  const blockedSecondDoctorBooking = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: secondBookingDoctor._id,
+    date: todayStr,
+    session: 'FN',
+    slot: '09:00 - 10:00'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(blockedSecondDoctorBooking.statusCode, 409);
+
+  const policyTestAppointments = getDoctorCol(targetDoctor._id, 'appointments');
+  await policyTestAppointments.insertMany([
+    '09:00 - 10:00',
+    '10:15 - 11:15',
+    '11:30 - 12:30',
+    '13:30 - 14:30',
+    '14:45 - 15:45',
+    '16:00 - 17:00'
+  ].map((slot, index) => ({
+    patientId: `booking-policy-test-${index}`,
+    doctorId: String(targetDoctor._id),
+    appointmentDate: new Date(`${todayStr}T12:00:00`),
+    session: index < 3 ? 'FN' : 'AN',
+    slot,
+    tokenNumber: index + 1,
+    status: 'waiting',
+    bookingPolicyTest: true
+  })));
+  const unlockedBookingDoctors = await mockRequest(app, 'GET', `/api/patient/doctors/all?date=${todayStr}`, null, {
+    authorization: `Bearer ${patientToken}`
+  });
+  assert.strictEqual(
+    unlockedBookingDoctors.body.doctors.find(doctor => doctor.email === 'dr.sharma@waitwise.com').bookingEnabled,
+    true
+  );
+  await policyTestAppointments.deleteMany({ bookingPolicyTest: true });
+
   const yesterday = new Date(`${getClinicDateKey()}T12:00:00`);
   yesterday.setDate(yesterday.getDate() - 1);
   if (yesterday.getDay() === 0) yesterday.setDate(yesterday.getDate() - 1);
@@ -324,6 +421,31 @@ async function verifyAll() {
   assert.strictEqual(savedAppointment.status, 'waiting');
   assert.strictEqual(savedAppointment.tokenNumber, bookRes.body.appointment.tokenNumber);
 
+  let laterBooking = null;
+  for (let offset = 1; offset <= 14 && !laterBooking; offset++) {
+    const candidate = new Date(appointmentDate);
+    candidate.setDate(candidate.getDate() + offset);
+    const candidateKey = formatLocalDate(candidate);
+    const candidateSlots = await mockRequest(app, 'GET', `/api/patient/doctors/${targetDoctor._id}/slots?date=${candidateKey}`, null, {
+      authorization: `Bearer ${patientToken}`
+    });
+    const session = candidateSlots.body.sessions && candidateSlots.body.sessions.find(item => item.slots.length > 0);
+    if (session) {
+      laterBooking = {
+        date: candidateKey,
+        session: session.code,
+        slot: session.slots[0]
+      };
+    }
+  }
+  assert(laterBooking, 'Could not find a later available clinic slot for the duplicate-booking test.');
+  const duplicateBooking = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    ...laterBooking
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(duplicateBooking.statusCode, 409);
+  assert.strictEqual(duplicateBooking.body.message, 'You already have an active appointment with this doctor. Complete or cancel it before booking another.');
+
   console.log('\n=== TEST 8: REAL-TIME TOKEN TRACKING (PATIENT VIEW) ===');
   const trackRes = await mockRequest(app, 'GET', `/api/patient/token/${appointmentId}`, null, {
     authorization: `Bearer ${patientToken}`
@@ -350,16 +472,28 @@ async function verifyAll() {
   });
   assert.deepStrictEqual(doctorSlots.body.sessions.map(session => session.code), ['FN', 'AN']);
 
-  const docQueueBefore = await mockRequest(app, 'GET', '/api/doctor/queue', null, {
+  const docQueueBefore = await mockRequest(app, 'GET', `/api/doctor/queue?date=${todayStr}`, null, {
     authorization: `Bearer ${doctorToken}`
   });
   console.log(`Doctor Queue: Total = ${docQueueBefore.body.stats.total}, Waiting = ${docQueueBefore.body.stats.waitingCount}`);
+  assert.strictEqual(docQueueBefore.body.appointments.length, 1);
+  assert.strictEqual(docQueueBefore.body.appointments[0].patient.name, 'WaitWise Integration Patient');
+  assert.deepStrictEqual(Object.keys(docQueueBefore.body.appointments[0].patient), ['name']);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(docQueueBefore.body.appointments[0], 'notes'), false);
 
   // Doctor calls patient into consultation room
   console.log('\n=== TEST 10: DOCTOR CALLS PATIENT INTO ROOM ===');
-  const callIn = await mockRequest(app, 'PATCH', `/api/doctor/appointments/${appointmentId}/status`, {
+  const doctorCallInDenied = await mockRequest(app, 'PATCH', `/api/doctor/appointments/${appointmentId}/status`, {
     status: 'in-consultation'
   }, { authorization: `Bearer ${doctorToken}` });
+  assert.strictEqual(doctorCallInDenied.statusCode, 404);
+  const doctorAdminCallDenied = await mockRequest(app, 'PATCH', `/api/admin/appointments/${appointmentId}/status`, {
+    status: 'in-consultation'
+  }, { authorization: `Bearer ${doctorToken}` });
+  assert.strictEqual(doctorAdminCallDenied.statusCode, 403);
+  const callIn = await mockRequest(app, 'PATCH', `/api/admin/appointments/${appointmentId}/status`, {
+    status: 'in-consultation'
+  }, { authorization: `Bearer ${adminToken}` });
   console.log('Call-in status:', callIn.body.message);
   const activeAppointment = await appointmentsCol.findOne({ _id: savedAppointment._id });
   assert(activeAppointment.consultationStartedAt instanceof Date);
@@ -373,9 +507,14 @@ async function verifyAll() {
 
   // Doctor marks consultation completed with clinical note
   console.log('\n=== TEST 11: DOCTOR COMPLETES CONSULTATION (AUTO-UPDATES QUEUE) ===');
-  const completeRes = await mockRequest(app, 'PATCH', `/api/doctor/appointments/${appointmentId}/complete`, {
-    notes: 'Prescribed anti-histamine, symptoms mild.'
+  const doctorCompleteDenied = await mockRequest(app, 'PATCH', `/api/doctor/appointments/${appointmentId}/complete`, {
+    notes: 'This must not be accepted.'
   }, { authorization: `Bearer ${doctorToken}` });
+  assert.strictEqual(doctorCompleteDenied.statusCode, 404);
+  const completeRes = await mockRequest(app, 'PATCH', `/api/admin/appointments/${appointmentId}/status`, {
+    status: 'completed',
+    notes: 'Prescribed anti-histamine, symptoms mild.'
+  }, { authorization: `Bearer ${adminToken}` });
   console.log('Consultation complete response:', completeRes.body.message);
   const completedAppointment = await appointmentsCol.findOne({ _id: savedAppointment._id });
   assert.strictEqual(completedAppointment.status, 'completed');
@@ -401,20 +540,59 @@ async function verifyAll() {
   });
   assert.strictEqual(patientAppointments.body.appointments.find(item => String(item._id) === String(appointmentId)).feedback.rating, 5);
 
-  const docQueueAfter = await mockRequest(app, 'GET', '/api/doctor/queue', null, {
+  const rebookAfterCompletion = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    ...laterBooking
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(rebookAfterCompletion.statusCode, 201);
+
+  const docQueueAfter = await mockRequest(app, 'GET', `/api/doctor/queue?date=${todayStr}`, null, {
     authorization: `Bearer ${doctorToken}`
   });
   console.log(`Doctor Queue After: Completed = ${docQueueAfter.body.stats.completedCount}, Waiting = ${docQueueAfter.body.stats.waitingCount}`);
 
   console.log('\n=== TEST 12: DOCTOR AVAILABILITY TOGGLE & WARD REASON ===');
-  const toggleAvail = await mockRequest(app, 'PATCH', '/api/doctor/availability', {
+  const doctorAvailabilityDenied = await mockRequest(app, 'PATCH', '/api/doctor/availability', {
     isAvailable: false,
     unavailabilityReason: 'Visiting existing patients in ward (In-Patient rounds)'
   }, { authorization: `Bearer ${doctorToken}` });
+  assert.strictEqual(doctorAvailabilityDenied.statusCode, 404);
+  const doctorAdminAvailabilityDenied = await mockRequest(app, 'PATCH', `/api/admin/doctors/${targetDoctor._id}/availability`, {
+    isAvailable: false
+  }, { authorization: `Bearer ${doctorToken}` });
+  assert.strictEqual(doctorAdminAvailabilityDenied.statusCode, 403);
+  const toggleAvail = await mockRequest(app, 'PATCH', `/api/admin/doctors/${targetDoctor._id}/availability`, {
+    isAvailable: false,
+    unavailabilityReason: 'Visiting existing patients in ward (In-Patient rounds)'
+  }, { authorization: `Bearer ${adminToken}` });
   console.log('Doctor availability toggle:', toggleAvail.body);
-  const updatedDoctor = await doctorsCol.findOne({ _id: savedDoctor._id });
+  const updatedDoctor = await doctorsCol.findOne({ _id: secondDoctor._id });
   assert.strictEqual(updatedDoctor.isAvailable, false);
   assert.strictEqual(updatedDoctor.unavailabilityReason, 'Visiting existing patients in ward (In-Patient rounds)');
+
+  const unavailableBookingDoctors = await mockRequest(app, 'GET', `/api/patient/doctors/all?date=${todayStr}`, null, {
+    authorization: `Bearer ${patientToken}`
+  });
+  assert.strictEqual(
+    unavailableBookingDoctors.body.doctors.find(doctor => doctor.email === 'dr.sharma@waitwise.com').bookingEnabled,
+    false
+  );
+
+  const unavailableSlots = await mockRequest(app, 'GET', `/api/patient/doctors/${targetDoctor._id}/slots?date=${todayStr}`, null, {
+    authorization: `Bearer ${patientToken}`
+  });
+  assert.strictEqual(unavailableSlots.statusCode, 200);
+  assert.deepStrictEqual(unavailableSlots.body.slots, []);
+  assert.deepStrictEqual(unavailableSlots.body.sessions, []);
+
+  const unavailableBooking = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    date: todayStr,
+    session: 'FN',
+    slot: '09:00 - 10:00'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(unavailableBooking.statusCode, 400);
+  assert.match(unavailableBooking.body.message, /^Doctor is currently unavailable:/);
 
   console.log('\n=== TEST 13: ADMIN OVERALL VIEW ===');
   const adminDash = await mockRequest(app, 'GET', '/api/admin/dashboard', null, {
@@ -436,6 +614,12 @@ async function verifyAll() {
       await doctorsCol.updateOne(
         { _id: originalDoctor._id },
         { $set: { isAvailable: originalDoctor.isAvailable, unavailabilityReason: originalDoctor.unavailabilityReason || '' } }
+      );
+    }
+    if (secondDoctor) {
+      await doctorsCol.updateOne(
+        { _id: secondDoctor._id },
+        { $set: { isAvailable: secondDoctor.isAvailable, unavailabilityReason: secondDoctor.unavailabilityReason || '' } }
       );
     }
   }

@@ -4,7 +4,8 @@ const bcrypt = require('bcryptjs');
 const { ObjectId, getCol, getDoctorCol, ensureDoctorDatabase } = require('../db/connection');
 const { requireAdmin } = require('../middleware/auth');
 const { getDayRange } = require('../utils/dateHelper');
-const { findAppointmentsAcrossDoctors } = require('../utils/appointmentStore');
+const { findAppointmentsAcrossDoctors, findAppointmentAcrossDoctors } = require('../utils/appointmentStore');
+const { calculateEstimatedWaitTime } = require('../utils/waitTime');
 const {
   CLINIC_SPECIALIZATION,
   CONSULTATION_MINUTES,
@@ -14,6 +15,33 @@ const {
 
 // GET /api/admin/seed — seed initial admin and psychiatry clinic doctors if not present
 const { seedInitialData } = require('../db/seedData');
+
+async function recalculateQueue(doctorId, appointmentDate) {
+  const appointments = getDoctorCol(doctorId, 'appointments');
+  const { start, end } = getDayRange(appointmentDate);
+  const doctorIdString = String(doctorId);
+  const query = {
+    doctorId: doctorIdString,
+    appointmentDate: { $gte: start, $lte: end }
+  };
+  const [waiting, activeConsultation] = await Promise.all([
+    appointments.find({ ...query, status: 'waiting' }).sort({ tokenNumber: 1 }).toArray(),
+    appointments.findOne({ ...query, status: 'in-consultation' })
+  ]);
+
+  for (let index = 0; index < waiting.length; index++) {
+    const estimatedWaitTime = calculateEstimatedWaitTime(
+      waiting[index],
+      waiting.slice(0, index),
+      activeConsultation
+    );
+    await appointments.updateOne(
+      { _id: waiting[index]._id },
+      { $set: { queuePosition: index + 1, estimatedWaitTime } }
+    );
+  }
+}
+
 router.get('/seed', async (req, res) => {
   try {
     await seedInitialData(getCol);
@@ -67,6 +95,54 @@ router.get('/dashboard', requireAdmin(), async (req, res) => {
   }
 });
 
+// POST /api/admin/register-admin — an existing admin creates another admin account
+router.post('/register-admin', requireAdmin(), async (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+    if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' ||
+        !name.trim() || !email.trim() || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email and password are required.' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
+    }
+
+    const lowerEmail = email.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lowerEmail)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+    }
+
+    const users = getCol('users');
+    const doctors = getCol('doctors');
+    const [existsUser, existsDoctor] = await Promise.all([
+      users.findOne({ email: lowerEmail }),
+      doctors.findOne({ email: lowerEmail })
+    ]);
+    if (existsUser || existsDoctor) {
+      return res.status(409).json({ success: false, message: 'A user or doctor with this email is already registered.' });
+    }
+
+    const result = await users.insertOne({
+      name: name.trim(),
+      email: lowerEmail,
+      password: await bcrypt.hash(password, 10),
+      role: 'admin',
+      phone: '',
+      registeredBy: req.user.id,
+      createdAt: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Administrator successfully registered into WaitWise system.',
+      adminId: result.insertedId
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Error registering administrator.' });
+  }
+});
+
 // POST /api/admin/register-doctor — admin registers a doctor (strictly max 2 doctors)
 router.post('/register-doctor', requireAdmin(), async (req, res) => {
   try {
@@ -105,6 +181,7 @@ router.post('/register-doctor', requireAdmin(), async (req, res) => {
       specialization: CLINIC_SPECIALIZATION,
       consultationTime: CONSULTATION_MINUTES,
       availableSlots: buildAvailableSlots(),
+      bookingPriority: count + 1,
       isAvailable: true,
       unavailabilityReason: '',
       retired: false,
@@ -193,6 +270,47 @@ router.get('/appointments', requireAdmin(), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Error fetching appointments.' });
+  }
+});
+
+// PATCH /api/admin/appointments/:id/status — admins manage the doctor queue
+router.patch('/appointments/:id/status', requireAdmin(), async (req, res) => {
+  try {
+    const { status, notes } = req.body || {};
+    const validStatuses = ['waiting', 'in-consultation', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid appointment status.' });
+    }
+    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 2000)) {
+      return res.status(400).json({ success: false, message: 'Notes must be a string of up to 2000 characters.' });
+    }
+
+    const appointment = await findAppointmentAcrossDoctors(req.params.id);
+    if (!appointment) return res.status(404).json({ success: false, message: 'Appointment not found.' });
+
+    const update = { status };
+    if (notes !== undefined) update.notes = notes.trim();
+    if (status === 'in-consultation') {
+      update.consultationStartedAt = new Date();
+      update.consultationDurationMinutes = Number(appointment.consultationDurationMinutes) || CONSULTATION_MINUTES;
+    } else {
+      update.estimatedWaitTime = 0;
+    }
+    if (status === 'completed') {
+      update.completedAt = new Date();
+      update.consultationCompletedAt = new Date();
+    }
+    if (status === 'waiting') update.consultationStartedAt = null;
+
+    await getDoctorCol(appointment.doctorId, 'appointments').updateOne(
+      { _id: appointment._id },
+      { $set: update }
+    );
+    await recalculateQueue(appointment.doctorId, appointment.appointmentDate);
+    res.json({ success: true, message: `Appointment status updated to ${status}.` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Error updating appointment status.' });
   }
 });
 

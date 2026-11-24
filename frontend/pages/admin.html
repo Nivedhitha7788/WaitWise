@@ -67,6 +67,30 @@
           <div class="orange-bar-left"></div>
           <div id="overviewDoctors"><p style="color:#94a3b8; text-align:center; padding:20px 0;">Loading doctors snapshot...</p></div>
         </div>
+
+        <div class="card" style="margin-top:24px;">
+          <div class="section-title" style="margin-bottom:6px;">Register Administrator</div>
+          <div class="orange-bar-left"></div>
+          <p class="section-subtitle">Create an admin account. Only a signed-in administrator can register additional admins.</p>
+          <div id="regAdminAlert"></div>
+          <form id="regAdminForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="a-name">Full Name <span class="req">*</span></label>
+                <input class="form-input" type="text" id="a-name" maxlength="120" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="a-email">Email Address <span class="req">*</span></label>
+                <input class="form-input" type="email" id="a-email" maxlength="254" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="a-pass">Password <span class="req">*</span></label>
+                <input class="form-input" type="password" id="a-pass" minlength="6" required />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-orange" id="regAdminBtn">Register Administrator &rarr;</button>
+          </form>
+        </div>
       </div>
 
       <!-- TAB 2: DOCTORS MANAGEMENT & REGISTER DOCTOR -->
@@ -162,6 +186,29 @@
   <script>
     if (!guardPage('admin')) throw new Error('redirect');
     renderNavbar('navbar');
+
+    $('#regAdminForm').onsubmit = async (e) => {
+      e.preventDefault();
+      clearAlert($('#regAdminAlert'));
+      const btn = $('#regAdminBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Registering...';
+
+      try {
+        const result = await api('POST', '/api/admin/register-admin', {
+          name: $('#a-name').value.trim(),
+          email: $('#a-email').value.trim(),
+          password: $('#a-pass').value
+        });
+        showAlert($('#regAdminAlert'), 'success', result.message);
+        $('#regAdminForm').reset();
+      } catch (err) {
+        showAlert($('#regAdminAlert'), 'error', err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Register Administrator →';
+      }
+    };
 
     $$('.tab').forEach(t => {
       t.onclick = () => {
@@ -298,20 +345,23 @@
       let reason = '';
       if (currentAvail) {
         reason = window.prompt(
-          'Reason for doctor unavailability (e.g. Visiting existing patients in ward (In-Patient rounds)):',
-          'Visiting existing patients in ward (In-Patient rounds)'
+          I18n.t('Reason for doctor unavailability (e.g. Visiting existing patients in ward (In-Patient rounds)):'),
+          I18n.t('Visiting existing patients in ward (In-Patient rounds)')
         );
         if (reason === null) return;
       }
+      const defaultReason = I18n.t('Visiting existing patients in ward (In-Patient rounds)');
       try {
         await api('PATCH', `/api/admin/doctors/${doctorId}/availability`, {
           isAvailable: !currentAvail,
-          unavailabilityReason: reason
+          unavailabilityReason: I18n.language === 'ta' && reason === defaultReason
+            ? 'Visiting existing patients in ward (In-Patient rounds)'
+            : reason
         });
         await loadDoctors();
         await loadStats();
       } catch (err) {
-        alert(err.message || 'Failed to update availability.');
+        alert(I18n.t(err.message || 'Failed to update availability.'));
       }
     }
 
@@ -327,17 +377,25 @@
           <div class="table-wrap">
             <table>
               <thead><tr>
-                <th>Token</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Session / Slot</th><th>Status</th><th>Wait / Completed</th>
+                <th>Token</th><th>Patient</th><th>Doctor</th><th>Date</th><th>Session / Slot</th><th>Status</th><th>Wait / Completed</th><th>Admin Queue Controls</th>
               </tr></thead>
               <tbody>${appointments.map(a => `
                 <tr>
                   <td><div style="width:38px; height:38px; background:rgba(255,255,255,0.06); border:1px solid var(--accent-orange); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--accent-orange); font-family:var(--font-serif); font-weight:700; font-size:16px;">#${a.tokenNumber}</div></td>
                   <td><div style="font-weight:700; color:#ffffff;">${a.patient?.name || 'Patient'}</div><div style="font-size:12px; color:#64748b;">${a.patient?.phone || a.patient?.email || ''}</div></td>
                   <td><div style="font-family:var(--font-serif); font-weight:700;">${a.doctor?.name || 'Doctor'}</div><div style="font-size:12px; color:var(--accent-orange);">${a.doctor?.specialization || ''}</div></td>
-                  <td>${fmtDate(a.appointmentDate)}</td>
+                  <td data-appointment-date="${escapeHTML(a.appointmentDate)}">${fmtDate(a.appointmentDate)}</td>
                   <td><b>${a.session || ''} Session · ${a.slot}</b></td>
                   <td>${statusBadge(a.status)}</td>
-                  <td><span style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString(I18n.locale,{hour:'2-digit',minute:'2-digit'})}` : a.status === 'waiting' ? `Est. ${formatWaitTime(a.estimatedWaitTime)}` : 'Active'}</span></td>
+                  <td><span ${a.status === 'completed' && a.completedAt ? `data-completed-at="${escapeHTML(a.completedAt)}"` : ''} style="font-size:12px; color:#94a3b8;">${a.status === 'completed' && a.completedAt ? `Done ${new Date(a.completedAt).toLocaleTimeString(I18n.locale,{hour:'2-digit',minute:'2-digit',hour12:I18n.language !== 'ta'})}` : a.status === 'waiting' ? `Est. ${formatWaitTime(a.estimatedWaitTime)}` : 'Active'}</span></td>
+                  <td>
+                    ${a.status === 'waiting' ? `
+                      <button type="button" class="btn btn-sm btn-dark" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="in-consultation">Call In Room</button>
+                      <button type="button" class="btn btn-sm btn-danger" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="cancelled">No Show</button>
+                    ` : a.status === 'in-consultation' ? `
+                      <button type="button" class="btn btn-sm btn-success" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="completed">Complete</button>
+                    ` : '—'}
+                  </td>
                 </tr>
               `).join('')}</tbody>
             </table>
@@ -348,18 +406,55 @@
       }
     }
 
+    $('#appointmentsWrap').addEventListener('click', async event => {
+      const button = event.target.closest('[data-appointment-status]');
+      if (!button) return;
+      const { appointmentId, appointmentStatus } = button.dataset;
+      let notes;
+      if (appointmentStatus === 'completed') {
+        notes = window.prompt('Optional consultation notes:', '');
+        if (notes === null) return;
+      }
+
+      button.disabled = true;
+      try {
+        await api('PATCH', `/api/admin/appointments/${appointmentId}/status`, {
+          status: appointmentStatus,
+          ...(notes === undefined ? {} : { notes })
+        });
+        await Promise.all([loadAppointments(), loadStats(), loadDoctors()]);
+      } catch (err) {
+        alert(I18n.t(err.message || 'Failed to update appointment.'));
+        button.disabled = false;
+      }
+    });
+
     $('#seedBtn').onclick = async () => {
       try {
         const res = await api('GET', '/api/admin/seed');
-        alert(res.message);
+        alert(I18n.t(res.message));
         loadStats();
         loadDoctors();
         loadAppointments();
       } catch (e) {
-        alert('Seed error: ' + e.message);
+        alert(`${I18n.t('Seed error:')} ${I18n.t(e.message)}`);
       }
     };
 
+    function refreshAppointmentDates() {
+      $$('[data-appointment-date]').forEach(node => {
+        node.textContent = fmtDate(node.dataset.appointmentDate);
+      });
+      $$('[data-completed-at]').forEach(node => {
+        node.textContent = `Done ${new Date(node.dataset.completedAt).toLocaleTimeString(I18n.locale, {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: I18n.language !== 'ta'
+        })}`;
+      });
+    }
+
+    I18n.onChange(refreshAppointmentDates);
     $('#refreshBtn').onclick = () => { loadStats(); loadDoctors(); loadAppointments(); };
     $('#aptRefreshBtn').onclick = loadAppointments;
 

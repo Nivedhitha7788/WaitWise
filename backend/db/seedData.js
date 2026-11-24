@@ -9,11 +9,13 @@ const {
 const DEFAULT_DOCTORS = [
   {
     name: 'Dr. Rajesh Sharma',
-    email: 'dr.sharma@waitwise.com'
+    email: 'dr.sharma@waitwise.com',
+    bookingPriority: 2
   },
   {
     name: 'Dr. Priya Patel',
-    email: 'dr.patel@waitwise.com'
+    email: 'dr.patel@waitwise.com',
+    bookingPriority: 1
   }
 ];
 
@@ -106,7 +108,7 @@ async function seedInitialData(getCol) {
     for (const doctorInfo of DEFAULT_DOCTORS) {
       await doctors.updateOne(
         { email: doctorInfo.email },
-        { $set: { name: doctorInfo.name } }
+        { $set: { name: doctorInfo.name, bookingPriority: doctorInfo.bookingPriority } }
       );
     }
   } catch (err) {

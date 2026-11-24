@@ -22,10 +22,11 @@
             Welcome to WaitWise &bull; Arrive only when your digital token is called
           </p>
         </div>
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
           <button class="btn btn-outline-orange btn-sm" id="enableNotifyBtn">
-            🔔 Enable Turn Audio Alerts
+            🔔 Enable Browser Alerts + Sound
           </button>
+          <span id="turnAlertsStatus" aria-live="polite" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
       </div>
 
@@ -52,9 +53,9 @@
             <!-- Doctor availability preview -->
             <div id="doctorInfo" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:2px; padding:14px 18px; margin-bottom:20px; font-size:13.5px;"></div>
 
-            <div class="form-group">
+            <div class="form-group" id="dateSection" style="display:none;">
               <label class="form-label">Select Consultation Date <span class="req">*</span></label>
-              <input class="form-input" type="date" id="dateInput" style="max-width:240px;" />
+              <input class="form-input" type="date" id="dateInput" disabled style="max-width:240px;" />
             </div>
 
             <div class="form-group" id="slotsSection" style="display:none;">
@@ -123,35 +124,98 @@
     const user = Auth.user;
     $('#patientGreeting').textContent = `Hello, ${user?.name || 'Patient'} — Queue digitally from home; enter only when your turn arrives.`;
 
+    let turnAudioContext = null;
+    const alertedTokens = new Set();
+
     function playTurnChime() {
+      if (!turnAudioContext || turnAudioContext.state !== 'running') return;
       try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
+        const osc = turnAudioContext.createOscillator();
+        const gain = turnAudioContext.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+        osc.frequency.setValueAtTime(587.33, turnAudioContext.currentTime);
+        osc.frequency.setValueAtTime(880, turnAudioContext.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, turnAudioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, turnAudioContext.currentTime + 0.6);
         osc.connect(gain);
-        gain.connect(audioCtx.destination);
+        gain.connect(turnAudioContext.destination);
+        osc.onended = () => {
+          osc.disconnect();
+          gain.disconnect();
+        };
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.6);
-      } catch (e) {}
+        osc.stop(turnAudioContext.currentTime + 0.6);
+      } catch (err) {
+        console.error('Could not play the turn alert sound:', err);
+        $('#turnAlertsStatus').textContent = 'Sound alert failed; check browser audio settings.';
+      }
+    }
+
+    function refreshAppointmentDates() {
+      $$('[data-appointment-date]').forEach(node => {
+        node.textContent = `Date: ${fmtDate(node.dataset.appointmentDate)}`;
+      });
     }
 
     $('#enableNotifyBtn').onclick = async () => {
+      const statuses = [];
+      let permissionRequest = null;
       if ('Notification' in window) {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted') {
-          alert('Turn notifications enabled! You will receive an alert when your turn is next.');
-          $('#enableNotifyBtn').style.display = 'none';
+        try {
+          permissionRequest = Notification.requestPermission();
+        } catch (err) {
+          console.error('Could not request notification permission:', err);
+          statuses.push('Could not enable desktop notifications.');
+        }
+      } else {
+        statuses.push('Desktop notifications are not supported by this browser.');
+      }
+
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      let audioResume = null;
+      if (!AudioContext) {
+        statuses.push('Turn sound is not supported by this browser.');
+      } else {
+        try {
+          turnAudioContext = turnAudioContext || new AudioContext();
+          audioResume = turnAudioContext.state === 'suspended'
+            ? turnAudioContext.resume()
+            : Promise.resolve();
+        } catch (err) {
+          console.error('Could not enable turn sound:', err);
+          statuses.push('Could not enable sound; check browser audio settings.');
         }
       }
+
+      if (permissionRequest) {
+        try {
+          const permission = await permissionRequest;
+          statuses.push(permission === 'granted'
+            ? 'Desktop notifications enabled.'
+            : 'Desktop notifications were not allowed.');
+        } catch (err) {
+          console.error('Could not enable desktop notifications:', err);
+          statuses.push('Could not enable desktop notifications.');
+        }
+      }
+
+      if (audioResume) {
+        try {
+          await audioResume;
+          if (turnAudioContext.state !== 'running') throw new Error('Audio context is not running.');
+          statuses.push('Turn sound enabled.');
+        } catch (err) {
+          console.error('Could not enable turn sound:', err);
+          statuses.push('Could not enable sound; check browser audio settings.');
+        }
+      }
+
+      $('#turnAlertsStatus').textContent = statuses.join(' ');
+      const notificationReady = !('Notification' in window) || Notification.permission === 'granted';
+      if (turnAudioContext && turnAudioContext.state === 'running' && notificationReady) {
+        $('#enableNotifyBtn').style.display = 'none';
+      }
     };
-    if ('Notification' in window && Notification.permission === 'granted') {
-      $('#enableNotifyBtn').style.display = 'none';
-    }
 
     const enableQueueNotificationsBtn = $('#enableQueueNotificationsBtn');
     if (!QueueNotifications.desktopSupported || QueueNotifications.desktopPermission === 'granted') {
@@ -176,11 +240,23 @@
     };
 
     function triggerTurnNotification(docName, tokenNum) {
+      const notificationKey = `${currentTrackingId}:${tokenNum}`;
+      if (alertedTokens.has(notificationKey)) return;
+      alertedTokens.add(notificationKey);
       playTurnChime();
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('WaitWise: YOUR TURN HAS ARRIVED!', {
-          body: `Token #${tokenNum} for ${docName}. Please enter the OP Consultation room now.`
-        });
+        try {
+          const localizedDoctorName = I18n.t(docName);
+          const body = I18n.language === 'ta'
+            ? `டோக்கன் #${tokenNum} (${localizedDoctorName}). இப்போது ஆலோசனை அறைக்குச் செல்லவும்.`
+            : `Token #${tokenNum} for ${localizedDoctorName}. Please enter the OP Consultation room now.`;
+          new Notification(I18n.t('WaitWise: YOUR TURN HAS ARRIVED!'), {
+            body
+          });
+        } catch (err) {
+          console.error('Could not show the turn notification:', err);
+          $('#turnAlertsStatus').textContent = 'Desktop notification failed; check browser notification settings.';
+        }
       }
     }
 
@@ -198,70 +274,139 @@
     let doctors = [];
     let selectedSlot = null;
     let selectedSession = null;
+    let slotsRequestId = 0;
     let trackerInterval = null;
     let trackerCountdown = 10;
     let currentTrackingId = null;
 
     async function loadDoctors() {
       try {
-        const res = await api('GET', '/api/patient/doctors/all');
+        const date = $('#dateInput').value || todayStr;
+        const res = await api('GET', `/api/patient/doctors/all?date=${encodeURIComponent(date)}`);
         doctors = res.doctors || [];
         const sel = $('#doctorSelect');
-        const selectedDoctor = sel.value;
+        const currentSelection = sel.value;
 
         if (!doctors.length) {
-          sel.innerHTML = `<option value="">${I18n.t('No doctors available yet')}</option>`;
+          sel.innerHTML = '<option value="">No doctors available yet</option>';
+          $('#doctorInfo').style.display = 'none';
+          clearBookingOptions();
           return;
         }
 
-        sel.innerHTML = `<option value="">${I18n.t('— Select an OP Doctor —')}</option>` +
+        sel.innerHTML = '<option value="">— Select an OP Doctor —</option>' +
           doctors.map(d => {
-            const availText = I18n.t(d.isAvailable ? '✓ Available' : '⚠️ Unavailable');
-            const reason = I18n.t(d.unavailabilityReason || 'Visiting ward');
-            const availability = d.isAvailable ? availText : `${availText} (${reason})`;
-            return `<option value="${d._id}">${d.name} — ${I18n.t(d.specialization)} [${availability}]</option>`;
+            const availability = !d.isAvailable
+              ? `Unavailable${d.unavailabilityReason ? ` — ${d.unavailabilityReason}` : ''}`
+              : d.availableSlotsCount === 0
+                ? d.bookingFullyBooked ? 'Fully booked' : 'No bookable slots on this date'
+                : d.bookingEnabled
+                  ? `${d.availableSlotsCount} slots available`
+                  : 'Available after Priya is fully booked';
+            return `<option value="${escapeHTML(d._id)}" ${d.bookingEnabled ? '' : 'disabled'}>${escapeHTML(d.name)} — ${escapeHTML(d.specialization)} [${escapeHTML(availability)}]</option>`;
           }).join('');
-        sel.value = selectedDoctor;
+        const selectedDoctor = doctors.find(d =>
+          String(d._id) === String(currentSelection) && d.bookingEnabled
+        ) || doctors.find(d => d.bookingEnabled);
+        sel.value = selectedDoctor ? String(selectedDoctor._id) : '';
+        if (sel.value) {
+          loadSlots();
+        } else {
+          clearBookingOptions();
+        }
       } catch (err) {
         console.error(err);
+        $('#doctorInfo').style.display = 'none';
+        clearBookingOptions();
       }
     }
 
-    async function loadSlots() {
-      const docId = $('#doctorSelect').value;
-      const date  = $('#dateInput').value;
+    function clearBookingOptions() {
+      slotsRequestId += 1;
       selectedSlot = null;
       selectedSession = null;
       $('#selectedSlot').value = '';
+      $('#dateInput').disabled = false;
+      $('#dateSection').style.display = '';
+      $('#slotsSection').style.display = 'none';
+      $('#slotsWrap').innerHTML = '';
       $('#bookBtn').disabled = true;
-      clearAlert($('#bookAlert'));
+    }
 
-      if (!docId || !date) {
-        $('#slotsSection').style.display = 'none';
+    function showUnavailableDoctor(doc) {
+      const reason = doc.unavailabilityReason || 'Visiting existing patients in ward (In-Patient rounds)';
+      doc.isAvailable = false;
+      doc.unavailabilityReason = reason;
+      const info = $('#doctorInfo');
+      info.style.display = '';
+      info.style.background = 'rgba(239, 68, 68, 0.12)';
+      info.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization}<br><span style="color:#f87171;font-weight:700;">⚠️ Currently Unavailable: ${reason}</span>`;
+      const selectedOption = $('#doctorSelect').selectedOptions[0];
+      if (selectedOption) {
+        selectedOption.textContent = `${doc.name} — ${doc.specialization} [⚠️ Unavailable (${reason})]`;
+      }
+      clearBookingOptions();
+    }
+
+    async function loadSlots() {
+      const requestId = ++slotsRequestId;
+      const docId = $('#doctorSelect').value;
+      const doc = doctors.find(d => String(d._id) === String(docId));
+      clearAlert($('#bookAlert'));
+      $('#bookBtn').disabled = true;
+
+      if (!docId || !doc) {
+        clearBookingOptions();
         $('#doctorInfo').style.display = 'none';
         return;
       }
 
-      const doc = doctors.find(d => String(d._id) === String(docId));
-      if (doc) {
-        const info = $('#doctorInfo');
-        info.style.display = '';
-        if (doc.isAvailable) {
-          info.style.background = 'rgba(16, 185, 129, 0.1)';
-          info.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-          info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
-        } else {
-          info.style.background = 'rgba(239, 68, 68, 0.12)';
-          info.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-          info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization}<br><span style="color:#f87171;font-weight:700;">⚠️ Currently Unavailable: ${doc.unavailabilityReason || 'Visiting existing patients in ward'}</span>`;
-        }
+      const info = $('#doctorInfo');
+      info.style.display = '';
+      if (!doc.bookingEnabled) {
+        info.style.background = 'rgba(245, 158, 11, 0.12)';
+        info.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+        info.textContent = doc.bookingBlockReason || 'This doctor is not accepting appointments for the selected date yet.';
+        clearBookingOptions();
+        return;
+      }
+      if (!doc.isAvailable) {
+        showUnavailableDoctor(doc);
+        return;
       }
 
+      info.style.background = 'rgba(16, 185, 129, 0.1)';
+      info.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+      info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
+      $('#dateInput').disabled = false;
+      $('#dateSection').style.display = '';
+      if (!$('#dateInput').value) $('#dateInput').value = todayStr;
+      const date = $('#dateInput').value;
+      selectedSlot = null;
+      selectedSession = null;
+      $('#selectedSlot').value = '';
+      if (!date) {
+        $('#slotsSection').style.display = 'none';
+        $('#slotsWrap').innerHTML = '';
+        return;
+      }
       $('#slotsSection').style.display = '';
       $('#slotsWrap').innerHTML = '<p style="color:#94a3b8;font-size:13px">Checking slots...</p>';
 
       try {
         const res = await api('GET', `/api/patient/doctors/${docId}/slots?date=${date}`);
+        if (requestId !== slotsRequestId || $('#doctorSelect').value !== docId) return;
+        if (!res.bookingEnabled) {
+          $('#slotsWrap').innerHTML = `<p style="color:#f59e0b;font-size:13px">${escapeHTML(res.message || 'This doctor is not accepting appointments for the selected date yet.')}</p>`;
+          return;
+        }
+        const unavailablePrefix = 'Doctor is currently unavailable: ';
+        if (typeof res.message === 'string' && res.message.startsWith(unavailablePrefix)) {
+          doc.unavailabilityReason = res.message.slice(unavailablePrefix.length);
+          showUnavailableDoctor(doc);
+          return;
+        }
         const sessions = res.sessions || [];
         if (!sessions.some(session => session.slots.length)) {
           $('#slotsWrap').innerHTML = `<p style="color:#94a3b8;font-size:13px">${res.message || 'No available slots for this date.'}</p>`;
@@ -302,16 +447,16 @@
           };
         });
       } catch (err) {
+        if (requestId !== slotsRequestId || $('#doctorSelect').value !== docId) return;
         $('#slotsWrap').innerHTML = `<p style="color:#ef4444;font-size:13px">${err.message}</p>`;
       }
     }
 
     $('#doctorSelect').onchange = loadSlots;
-    $('#dateInput').onchange = loadSlots;
-
     const todayStr = new Date().toISOString().split('T')[0];
     $('#dateInput').min = todayStr;
     $('#dateInput').value = todayStr;
+    $('#dateInput').onchange = loadDoctors;
 
     $('#bookForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -336,7 +481,7 @@
           `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.`);
 
         selectedSlot = null;
-        await loadSlots();
+        await loadDoctors();
 
         setTimeout(() => {
           $$('.tab').forEach(x => x.classList.remove('active'));
@@ -384,7 +529,7 @@
                   <div>
                     <div style="font-family:var(--font-serif);font-weight:700;font-size:19px;color:#ffffff">${doc.name || 'Doctor'}</div>
                     <div style="font-size:13px;color:var(--text-muted)">${doc.specialization || 'Psychiatry Clinic'} &bull; ${a.session || ''} Session: <b style="color:#fff;">${a.slot}</b></div>
-                    <div style="font-size:12px;color:#64748b">Date: ${fmtDate(a.appointmentDate)}</div>
+                    <div data-appointment-date="${escapeHTML(a.appointmentDate)}" style="font-size:12px;color:#64748b">Date: ${fmtDate(a.appointmentDate)}</div>
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -460,12 +605,12 @@
     });
 
     async function cancelApt(id) {
-      if (!confirm('Cancel this appointment token?')) return;
+      if (!confirm(I18n.t('Cancel this appointment token?'))) return;
       try {
         await api('DELETE', `/api/patient/appointments/${id}`);
         loadMyAppointments();
       } catch (err) {
-        alert(err.message);
+        alert(I18n.t(err.message));
       }
     }
 
@@ -568,7 +713,7 @@
     $('#refreshTokenBtn').onclick = () => { fetchTokenStatus(); trackerCountdown = 10; };
     $('#refreshAptsBtn').onclick = loadMyAppointments;
 
-    I18n.onChange(loadDoctors);
+    I18n.onChange(refreshAppointmentDates);
     loadDoctors();
     loadMyAppointments();
     QueueNotifications.start(async () => {

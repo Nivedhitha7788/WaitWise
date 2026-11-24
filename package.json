@@ -5,7 +5,7 @@
   "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
-    "test": "node verify_in_process.js"
+    "test": "node verify_in_process.js && node verify_admin_registration.js"
   },
   "keywords": [
     "hospital",
