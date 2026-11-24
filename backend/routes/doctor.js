@@ -46,8 +46,7 @@ router.get('/queue', requireDoctor(), async (req, res) => {
         slot: 1,
         tokenNumber: 1,
         status: 1,
-        queuePosition: 1,
-        estimatedWaitTime: 1
+        queuePosition: 1
       }
     }).sort({ tokenNumber: 1 }).toArray();
 

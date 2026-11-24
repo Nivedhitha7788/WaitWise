@@ -3,6 +3,8 @@ const CONSULTATION_MINUTES = 60;
 const MAX_DOCTORS = 2;
 const CLINIC_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CLINIC_TIME_ZONE = 'Asia/Kolkata';
+const BOOKING_DAYS_AHEAD = 3;
+const BOOKING_WINDOW_DAYS = 3;
 const DEFAULT_BOOKING_PRIORITIES = {
   'dr.patel@waitwise.com': 1,
   'dr.sharma@waitwise.com': 2
@@ -40,6 +42,32 @@ function getClinicDateKey(date = new Date()) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+function addDaysToDateKey(dateKey, days) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function getBookingWindow(now = new Date()) {
+  const firstDate = addDaysToDateKey(getClinicDateKey(now), BOOKING_DAYS_AHEAD);
+  const dates = Array.from({ length: BOOKING_WINDOW_DAYS }, (_, index) =>
+    addDaysToDateKey(firstDate, index)
+  );
+  return { minDate: dates[0], maxDate: dates[dates.length - 1], dates };
+}
+
+function isBookableDate(date, now = new Date()) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) return false;
+  const { minDate, maxDate } = getBookingWindow(now);
+  return date >= minDate && date <= maxDate;
+}
+
 function isPastClinicSlot(date, slot, now = new Date()) {
   const clinicDate = getClinicDateKey(now);
   if (date < clinicDate) return true;
@@ -70,9 +98,13 @@ module.exports = {
   MAX_DOCTORS,
   CLINIC_DAYS,
   CLINIC_TIME_ZONE,
+  BOOKING_DAYS_AHEAD,
+  BOOKING_WINDOW_DAYS,
   SESSION_SLOTS,
   buildAvailableSlots,
   getClinicDateKey,
+  getBookingWindow,
+  isBookableDate,
   isPastClinicSlot,
   getDoctorBookingPriority
 };

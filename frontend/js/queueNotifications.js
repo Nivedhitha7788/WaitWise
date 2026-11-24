@@ -59,6 +59,7 @@ const QueueNotifications = (() => {
     const activeIds = new Set();
     appointments.forEach(appointment => {
       if (appointment.status !== 'waiting') return;
+      if (appointment.appointmentDate && !isAppointmentToday(appointment.appointmentDate)) return;
       const appointmentId = String(appointment._id || '');
       const position = Number(appointment.queuePosition);
       if (!appointmentId || !Number.isInteger(position) || position < 1) return;

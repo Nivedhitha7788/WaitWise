@@ -94,7 +94,7 @@
                     <td>#${escapeHTML(appointment.tokenNumber)}</td>
                     <td>${escapeHTML(appointment.patient?.name || 'Patient')}</td>
                     <td>${escapeHTML(appointment.session || '')} · ${escapeHTML(appointment.slot || '')}</td>
-                    <td>${statusBadge(appointment.status)}</td>
+                    <td>${statusBadge(appointment.status, appointment.appointmentDate)}</td>
                   </tr>
                 `).join('')}
               </tbody>

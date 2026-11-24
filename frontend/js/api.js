@@ -72,7 +72,7 @@ const I18n = (() => {
       '⏳ Waiting in Queue': '⏳ வரிசையில் காத்திருக்கிறது', '🩺 In Consultation': '🩺 ஆலோசனை நடைபெறுகிறது',
       '✅ Completed': '✅ முடிந்தது', '✕ Cancelled': '✕ ரத்து செய்யப்பட்டது',
       'Track Live Queue': 'நேரடி வரிசையைக் கண்காணிக்கவும்', 'Cancel': 'ரத்து செய்',
-      'Queue Position': 'வரிசை இடம்', 'Est. Wait Remaining': 'மதிப்பிடப்பட்ட காத்திருப்பு நேரம்',
+      'Queue Position': 'வரிசை இடம்', '📅 Scheduled': '📅 முன்பதிவு செய்யப்பட்டது',
       'Hospital Entry': 'மருத்துவமனை நுழைவு', 'Remain Off-Site Until Turn': 'உங்கள் முறை வரும் வரை வெளியே காத்திருக்கவும்',
       'Turn notifications enabled! You will receive an alert when your turn is next.': 'உங்கள் முறை நெருங்கும்போது அறிவிப்பு வரும்.',
       'Patients': 'நோயாளர்கள்', 'Total Patients': 'மொத்த நோயாளர்கள்',
@@ -171,13 +171,13 @@ const I18n = (() => {
       'No tokens booked yet': 'இதுவரை டோக்கன்கள் முன்பதிவு செய்யப்படவில்லை',
       "Use the 'Book OP Consultation Slot' tab to reserve your appointment.": 'முன்பதிவு செய்ய “ஆலோசனை நேரத்தை முன்பதிவு செய்” தாவலைப் பயன்படுத்தவும்.',
       'Date:': 'தேதி:', '🔍 Track Live Queue': '🔍 நேரடி வரிசையைக் கண்காணிக்கவும்',
-      'Est. Wait Remaining': 'மீதமுள்ள மதிப்பிடப்பட்ட காத்திருப்பு நேரம்', 'Hospital Entry': 'மருத்துவமனை நுழைவு',
+      '📅 Scheduled': '📅 முன்பதிவு செய்யப்பட்டது', 'Hospital Entry': 'மருத்துவமனை நுழைவு',
       'Remain Off-Site Until Turn': 'உங்கள் முறை வரும் வரை வெளியே காத்திருக்கவும்',
       '✅ Consultation complete. Thank you!': '✅ ஆலோசனை முடிந்தது. நன்றி!',
       '❌ Appointment was cancelled.': '❌ முன்பதிவு ரத்து செய்யப்பட்டது.',
       '🩺 You are currently inside the Consultation Room.': '🩺 நீங்கள் தற்போது ஆலோசனை அறையில் இருக்கிறீர்கள்.',
       '🔔 YOUR TURN IS NEXT! Please proceed to the room.': '🔔 அடுத்தது உங்கள் முறை! ஆலோசனை அறைக்குச் செல்லவும்.',
-      'TOKEN': 'டோக்கன்', 'Queue Position': 'வரிசை இடம்', 'Est. Wait Time': 'மதிப்பிடப்பட்ட காத்திருப்பு நேரம்',
+      'TOKEN': 'டோக்கன்', 'Queue Position': 'வரிசை இடம்',
       'minutes': 'நிமிடங்கள்', '💡 Position updates automatically when doctor finishes prior consultations.': '💡 மருத்துவர் முந்தைய ஆலோசனையை முடித்ததும் உங்கள் வரிசை இடம் தானாகப் புதுப்பிக்கப்படும்.',
       'Portal Access': 'தள அணுகல்', 'Select your role to access the outpatient queue management system': 'வெளிநோயாளர் வரிசை மேலாண்மை அமைப்பை அணுக உங்கள் பங்கைத் தேர்ந்தெடுக்கவும்',
       'Email Address': 'மின்னஞ்சல் முகவரி', 'Sign In as Patient →': 'நோயாளராக உள்நுழையவும் →',
@@ -296,7 +296,6 @@ const I18n = (() => {
       'Today\'s Queue': 'இன்றைய வரிசை',
       '🔄 Refresh Queue': '🔄 வரிசையைப் புதுப்பிக்கவும்',
       'The clinic has exactly two active doctors, both configured for General Psychiatry.': 'மனநல மருத்துவப் பிரிவில் இரண்டு மருத்துவர்கள் மட்டுமே உள்ளனர்.',
-      'Est. Wait Time': 'மதிப்பிடப்பட்ட காத்திருப்பு நேரம்',
       '✕ Close Form': '✕ படிவத்தை மூடு', '+ Register Doctor': '+ மருத்துவரைப் பதிவு செய்யவும்',
       'Register General Psychiatry Doctor': 'பொது மனநல மருத்துவரைப் பதிவு செய்யவும்',
       'Fixed consultation schedule (Monday–Saturday)': 'நிலையான ஆலோசனை நேரங்கள் (திங்கள்–சனி)',
@@ -319,7 +318,7 @@ const I18n = (() => {
       'consultation': 'ஆலோசனை', 'Currently Unavailable:': 'தற்போது கிடைக்கவில்லை:',
       'consultation •': 'ஆலோசனை •',
       '⚠️ Currently Unavailable:': '⚠️ தற்போது கிடைக்கவில்லை:',
-      'Initial Queue Position:': 'தொடக்க வரிசை இடம்:', '• Est. wait:': '• மதிப்பிடப்பட்ட காத்திருப்பு:',
+      'Initial Queue Position:': 'தொடக்க வரிசை இடம்:',
       'No consultation slots configured on': 'இந்த நாளில் ஆலோசனை நேரங்கள் அமைக்கப்படவில்லை:',
       'Doctor, date, and slot are required.': 'மருத்துவர், தேதி மற்றும் நேரம் அவசியம்.',
       'Select a valid consultation slot for this date and session.': 'இந்த தேதி மற்றும் அமர்வுக்கான சரியான ஆலோசனை நேரத்தைத் தேர்ந்தெடுக்கவும்.',
@@ -503,21 +502,6 @@ const I18n = (() => {
   if (savedLanguage === 'hi') localStorage.setItem('ww_language', 'en');
   const sourceTitle = document.title;
 
-  function translateWaitDuration(duration) {
-    if (language === 'en') return duration;
-    const match = duration.match(/^(?:(\d+) hr(?: (\d+) min)?|(\d+) min)$/);
-    if (!match) return duration;
-
-    const hours = Number(match[1] || 0);
-    const minutes = Number(match[2] || match[3] || 0);
-    const hourLabel = 'மணி';
-    const minuteLabel = 'நிமிடங்கள்';
-    const parts = [];
-    if (hours) parts.push(`${hours} ${hourLabel}`);
-    if (minutes || !hours) parts.push(`${minutes} ${minuteLabel}`);
-    return parts.join(' ');
-  }
-
   function normalizeTranslation(value) {
     if (language !== 'ta') return value;
     return value
@@ -548,8 +532,6 @@ const I18n = (() => {
     const ratingLabel = trimmed.match(/^(\d+) out of 5 stars$/);
     const signInRole = trimmed.match(/^Sign in as (Patient|Doctor|Administrator) →$/);
     const sessionSlot = trimmed.match(/^(FN|AN) Session: (.+)$/);
-    const estimatedWait = trimmed.match(/^Est\. ((?:(?:\d+) hr(?: \d+ min)?|\d+ min))$/);
-    const waitDuration = trimmed.match(/^(?:(\d+) hr(?: (\d+) min)?|(\d+) min)$/);
     const waitingCount = trimmed.match(/^\((\d+) waiting\)$/);
     const appointmentSummary = trimmed.match(/^(.+) • (FN|AN) Session: (.+)$/);
     const appointmentSessionLabel = trimmed.match(/^(.+) • (FN|AN) Session:$/);
@@ -612,10 +594,6 @@ const I18n = (() => {
       translated = language === 'ta'
         ? `${sessionSlot[1]} அமர்வு: ${sessionSlot[2]}`
         : `${sessionSlot[1]} Session: ${sessionSlot[2]}`;
-    } else if (!translated && estimatedWait) {
-      translated = language === 'ta'
-        ? `மதிப்பிடப்பட்ட நேரம் ${translateWaitDuration(estimatedWait[1])}`
-        : `Est. ${translateWaitDuration(estimatedWait[1])}`;
     } else if (!translated && waitingCount) {
       translated = language === 'ta'
         ? `(${waitingCount[1]} காத்திருக்கின்றனர்)`
@@ -632,8 +610,6 @@ const I18n = (() => {
         : `${specialization} • ${appointmentSessionLabel[2]} Session:`;
     } else if (!translated && appointmentDate) {
       translated = `${dictionary['Date:'] || (language === 'ta' ? 'தேதி:' : 'Date:')} ${appointmentDate[1]}`;
-    } else if (!translated && waitDuration) {
-      translated = translateWaitDuration(trimmed);
     } else if (!translated && minutes) {
       translated = language === 'ta'
         ? `${minutes[1]} நிமிடங்கள்`
@@ -856,15 +832,6 @@ async function api(method, path, body) {
   return data;
 }
 
-function formatWaitTime(minutes) {
-  const totalMinutes = Math.max(0, Math.floor(Number(minutes) || 0));
-  const hours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
-  if (!hours) return `${remainingMinutes} min`;
-  if (!remainingMinutes) return `${hours} hr`;
-  return `${hours} hr ${remainingMinutes} min`;
-}
-
 /* ---------- Navbar (Besloor Style) ---------- */
 function renderNavbar(containerId = 'navbar') {
   const el = document.getElementById(containerId);
@@ -947,20 +914,42 @@ function escapeHTML(value) {
   })[character]);
 }
 
-function statusBadge(status) {
+function clinicDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isAppointmentToday(appointmentDate) {
+  return Boolean(appointmentDate) &&
+    clinicDateKey(new Date(appointmentDate)) === clinicDateKey();
+}
+
+function statusBadge(status, appointmentDate) {
+  const displayStatus = status === 'waiting' && appointmentDate &&
+    clinicDateKey(new Date(appointmentDate)) > clinicDateKey()
+    ? 'scheduled'
+    : status;
   const map = {
     waiting: 'waiting',
+    scheduled: 'waiting',
     'in-consultation': 'in-consultation',
     completed: 'completed',
     cancelled: 'cancelled'
   };
   const labels = {
     waiting: '⏳ Waiting in Queue',
+    scheduled: '📅 Scheduled',
     'in-consultation': '🩺 In Consultation',
     completed: '✅ Completed',
     cancelled: '✕ Cancelled'
   };
-  return `<span class="badge badge-${map[status] || ''}">${labels[status] || status}</span>`;
+  return `<span class="badge badge-${map[displayStatus] || ''}">${labels[displayStatus] || status}</span>`;
 }
 
 function fmtDate(d) {
