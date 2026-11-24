@@ -29,6 +29,17 @@ assert.strictEqual(
   180,
   'Wait estimate should account for scheduled gaps between consultations.'
 );
+assert.strictEqual(
+  calculateEstimatedWaitTime({
+    status: 'waiting',
+    appointmentDate: new Date('2026-11-28T12:00:00+05:30'),
+    slot: '11:30 - 12:30',
+    tokenNumber: 3,
+    consultationDurationMinutes: 60
+  }, [], null, new Date('2026-11-24T15:06:00+05:30')),
+  5544,
+  'Future appointments should show the time until their scheduled slot even when nobody is ahead.'
+);
 
 function formatLocalDate(date) {
   return [
