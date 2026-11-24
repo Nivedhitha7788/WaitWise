@@ -25,7 +25,7 @@
 
 - **Users:** Patient and admin profile fields, role, and a hashed password. The patient registration page creates patient accounts; additional admin accounts can only be created by an authenticated admin.
 - **Doctors:** Name, email, hashed password, specialization, consultation duration, weekly availability slots, current availability and reason, registration metadata, and creation time.
-- **Appointments (doctor-specific databases):** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait in minutes, 60-minute consultation duration, status, consultation start/completion timestamps, booking timestamp, and consultation notes. The first token's estimate is the time until its scheduled start; later tokens use the remaining active consultation time plus 60 minutes per waiting patient ahead. Estimates are refreshed in MongoDB as queue state changes and during patient token tracking.
+- **Appointments (doctor-specific databases):** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait in minutes, 60-minute consultation duration, status, consultation start/completion timestamps, booking timestamp, and consultation notes. Wait estimates project the active consultation and each waiting patient's scheduled slot, including gaps between sessions, and are refreshed as queue state changes and during patient token tracking.
 
 ---
 

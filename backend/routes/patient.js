@@ -109,7 +109,11 @@ async function recalculateQueue(doctorId, appointmentDate) {
   });
 
   for (let i = 0; i < waiting.length; i++) {
-    const estimatedWaitTime = calculateEstimatedWaitTime(waiting[i], i, activeConsultation);
+    const estimatedWaitTime = calculateEstimatedWaitTime(
+      waiting[i],
+      waiting.slice(0, i),
+      activeConsultation
+    );
     await appointments.updateOne(
       { _id: waiting[i]._id },
       { $set: { queuePosition: i + 1, estimatedWaitTime } }
@@ -320,13 +324,13 @@ router.post('/book', requirePatient(), async (req, res) => {
     const tokenNumber = sessions.flatMap(item => item.slots).indexOf(slot) + 1;
 
     // Queue position = waiting appointments ahead of this one + 1
-    const ahead = await appointments.countDocuments({
+    const waitingAheadAppointments = await appointments.find({
       doctorId: docIdStr,
       appointmentDate: { $gte: start, $lte: end },
       status: 'waiting',
       tokenNumber: { $lt: tokenNumber }
-    });
-    const queuePosition = ahead + 1;
+    }).sort({ tokenNumber: 1 }).toArray();
+    const queuePosition = waitingAheadAppointments.length + 1;
     const activeConsultation = await appointments.findOne({
       doctorId: docIdStr,
       appointmentDate: { $gte: start, $lte: end },
@@ -341,7 +345,11 @@ router.post('/book', requirePatient(), async (req, res) => {
       status: 'waiting',
       consultationDurationMinutes
     };
-    const estimatedWaitTime = calculateEstimatedWaitTime(appointment, ahead, activeConsultation);
+    const estimatedWaitTime = calculateEstimatedWaitTime(
+      appointment,
+      waitingAheadAppointments,
+      activeConsultation
+    );
 
     const result = await appointments.insertOne({
       patientId: String(req.user.id),

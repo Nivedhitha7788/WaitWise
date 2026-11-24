@@ -5,6 +5,31 @@ const { getClinicDateKey } = require('./backend/utils/clinicConfig');
 const { getDayRange } = require('./backend/utils/dateHelper');
 const { calculateEstimatedWaitTime } = require('./backend/utils/waitTime');
 
+const waitTimeNow = new Date('2026-11-24T08:30:00+05:30');
+const waitingForElevenThirty = {
+  status: 'waiting',
+  appointmentDate: new Date('2026-11-24T12:00:00+05:30'),
+  slot: '11:30 - 12:30',
+  consultationDurationMinutes: 60
+};
+const waitingAhead = [
+  {
+    appointmentDate: waitingForElevenThirty.appointmentDate,
+    slot: '09:00 - 10:00',
+    consultationDurationMinutes: 60
+  },
+  {
+    appointmentDate: waitingForElevenThirty.appointmentDate,
+    slot: '10:15 - 11:15',
+    consultationDurationMinutes: 60
+  }
+];
+assert.strictEqual(
+  calculateEstimatedWaitTime(waitingForElevenThirty, waitingAhead, null, waitTimeNow),
+  180,
+  'Wait estimate should account for scheduled gaps between consultations.'
+);
+
 function formatLocalDate(date) {
   return [
     date.getFullYear(),
@@ -97,19 +122,19 @@ async function verifyAll() {
       slot: '09:00 - 10:00',
       tokenNumber: 1,
       status: 'waiting'
-    }, 0, null, new Date('2026-11-18T03:25:00.000Z')),
+    }, [], null, new Date('2026-11-18T03:25:00.000Z')),
     5,
     'The first token wait should be the exact time until its scheduled start.'
   );
   assert.strictEqual(
     calculateEstimatedWaitTime(
       { tokenNumber: 3, status: 'waiting', consultationDurationMinutes: 60 },
-      2,
+      [{}, {}],
       { consultationDurationMinutes: 60, consultationStartedAt: new Date('2026-11-18T03:00:00.000Z') },
       new Date('2026-11-18T03:10:00.000Z')
     ),
     170,
-    'Later token waits should include live active consultation time and 60 minutes per patient ahead.'
+    'Waits should include live active consultation time and the duration of waiting patients ahead.'
   );
   try {
   await doctorsCol.updateOne({ email: 'dr.sharma@waitwise.com' }, { $set: { isAvailable: true, unavailabilityReason: '' } });

@@ -23,7 +23,11 @@ async function recalculateQueue(doctorId, appointmentDate) {
   });
 
   for (let i = 0; i < waiting.length; i++) {
-    const estimatedWaitTime = calculateEstimatedWaitTime(waiting[i], i, activeConsultation);
+    const estimatedWaitTime = calculateEstimatedWaitTime(
+      waiting[i],
+      waiting.slice(0, i),
+      activeConsultation
+    );
     await appointments.updateOne(
       { _id: waiting[i]._id },
       { $set: { queuePosition: i + 1, estimatedWaitTime } }

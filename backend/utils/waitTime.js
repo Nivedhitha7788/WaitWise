@@ -8,28 +8,33 @@ function getScheduledStart(appointment) {
   return new Date(`${date}T${time}:00+05:30`);
 }
 
-function calculateEstimatedWaitTime(appointment, waitingAheadCount, activeConsultation, now = new Date()) {
+function calculateEstimatedWaitTime(appointment, waitingAheadAppointments, activeConsultation, now = new Date()) {
   if (appointment.status !== 'waiting') return 0;
 
-  if (!activeConsultation && Number(appointment.tokenNumber) === 1 && waitingAheadCount === 0) {
-    const scheduledStart = getScheduledStart(appointment);
-    if (scheduledStart) return Math.max(0, Math.ceil((scheduledStart.getTime() - now.getTime()) / 60000));
-  }
-
-  let activeConsultationRemaining = 0;
+  let nextAvailableAt = now.getTime();
   if (activeConsultation) {
     const duration = Number(activeConsultation.consultationDurationMinutes) || 60;
     const startedAt = activeConsultation.consultationStartedAt
       ? new Date(activeConsultation.consultationStartedAt).getTime()
       : now.getTime();
-    activeConsultationRemaining = Math.max(
-      0,
-      Math.ceil((duration * 60000 - (now.getTime() - startedAt)) / 60000)
-    );
+    nextAvailableAt = Math.max(now.getTime(), startedAt + duration * 60000);
   }
 
-  const duration = Number(appointment.consultationDurationMinutes) || 60;
-  return activeConsultationRemaining + waitingAheadCount * duration;
+  for (const waiting of waitingAheadAppointments) {
+    const scheduledStart = getScheduledStart(waiting);
+    const startAt = Math.max(nextAvailableAt, scheduledStart ? scheduledStart.getTime() : nextAvailableAt);
+    const duration = Number(waiting.consultationDurationMinutes)
+      || Number(appointment.consultationDurationMinutes)
+      || 60;
+    nextAvailableAt = startAt + duration * 60000;
+  }
+
+  const scheduledStart = getScheduledStart(appointment);
+  const estimatedStart = Math.max(
+    nextAvailableAt,
+    scheduledStart ? scheduledStart.getTime() : nextAvailableAt
+  );
+  return Math.max(0, Math.ceil((estimatedStart - now.getTime()) / 60000));
 }
 
 async function refreshEstimatedWaitTime(appointments, appointment, now = new Date()) {
@@ -40,17 +45,17 @@ async function refreshEstimatedWaitTime(appointments, appointment, now = new Dat
     doctorId: String(appointment.doctorId),
     appointmentDate: { $gte: start, $lte: end }
   };
-  const [waitingAheadCount, activeConsultation] = await Promise.all([
-    appointments.countDocuments({
+  const [waitingAheadAppointments, activeConsultation] = await Promise.all([
+    appointments.find({
       ...query,
       status: 'waiting',
       tokenNumber: { $lt: appointment.tokenNumber }
-    }),
+    }).sort({ tokenNumber: 1 }).toArray(),
     appointments.findOne({ ...query, status: 'in-consultation' })
   ]);
   const estimatedWaitTime = calculateEstimatedWaitTime(
     appointment,
-    waitingAheadCount,
+    waitingAheadAppointments,
     activeConsultation,
     now
   );
