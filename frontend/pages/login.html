@@ -23,6 +23,9 @@
       </div>
 
       <div id="alertBox"></div>
+      <div id="patientSpecialNotice" class="alert alert-info" style="display:none;font-size:12px;">
+        Special cases must physically enquire at the hospital. They are accommodated only by the administrator in the 5:00–6:00 PM and 6:00–7:00 PM slots.
+      </div>
 
       <form id="loginForm">
         <div class="form-group">
@@ -82,6 +85,7 @@
       const admNotice = $('#adminNotice');
 
       regLink.style.display = role === 'patient' ? '' : 'none';
+      $('#patientSpecialNotice').style.display = role === 'patient' ? '' : 'none';
       if (docNotice) docNotice.style.display = role === 'doctor' ? '' : 'none';
       if (admNotice) admNotice.style.display = role === 'admin' ? '' : 'none';
 

@@ -19,6 +19,8 @@ const SESSION_SLOTS = [
   }
 ];
 
+const SPECIAL_CASE_SLOTS = ['17:00 - 18:00', '18:00 - 19:00'];
+
 function buildAvailableSlots() {
   return CLINIC_DAYS.map(day => ({
     day,
@@ -71,6 +73,7 @@ module.exports = {
   CLINIC_DAYS,
   CLINIC_TIME_ZONE,
   SESSION_SLOTS,
+  SPECIAL_CASE_SLOTS,
   buildAvailableSlots,
   getClinicDateKey,
   isPastClinicSlot,

@@ -579,7 +579,14 @@ router.delete('/appointments/:id', requirePatient(), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cannot cancel an appointment already completed or in progress.' });
 
     let updateQuery = { _id: apt._id };
-    await appointments.updateOne(updateQuery, { $set: { status: 'cancelled' } });
+    await appointments.updateOne(updateQuery, {
+      $set: {
+        status: 'cancelled',
+        cancelledAt: new Date(),
+        cancelledBy: 'patient',
+        cancellationSource: 'patient-self-service'
+      }
+    });
     if (apt.status === 'waiting') {
       await recalculateQueue(apt.doctorId, apt.appointmentDate);
     }

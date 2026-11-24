@@ -3,14 +3,16 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { ObjectId, getCol, getDoctorCol, ensureDoctorDatabase } = require('../db/connection');
 const { requireAdmin } = require('../middleware/auth');
-const { getDayRange } = require('../utils/dateHelper');
+const { getDayRange, parseAppointmentDate } = require('../utils/dateHelper');
 const { findAppointmentsAcrossDoctors, findAppointmentAcrossDoctors } = require('../utils/appointmentStore');
 const { calculateEstimatedWaitTime } = require('../utils/waitTime');
 const {
   CLINIC_SPECIALIZATION,
   CONSULTATION_MINUTES,
   MAX_DOCTORS,
-  buildAvailableSlots
+  buildAvailableSlots,
+  SPECIAL_CASE_SLOTS,
+  getDoctorBookingPriority
 } = require('../utils/clinicConfig');
 
 // GET /api/admin/seed — seed initial admin and psychiatry clinic doctors if not present
@@ -77,6 +79,12 @@ router.get('/dashboard', requireAdmin(), async (req, res) => {
     const waitingCount = appointments.filter(appointment => appointment.status === 'waiting').length;
     const completedCount = appointments.filter(appointment => appointment.status === 'completed').length;
     const inConsultationCount = appointments.filter(appointment => appointment.status === 'in-consultation').length;
+    const cancelledCount = appointments.filter(appointment =>
+      appointment.status === 'cancelled'
+    ).length;
+    const patientCancelledCount = appointments.filter(appointment =>
+      appointment.status === 'cancelled' && appointment.cancelledBy === 'patient'
+    ).length;
 
     res.json({
       success: true,
@@ -86,7 +94,9 @@ router.get('/dashboard', requireAdmin(), async (req, res) => {
         todayAppointments: appointments.length,
         waitingCount,
         completedCount,
-        inConsultationCount
+        inConsultationCount,
+        cancelledCount,
+        patientCancelledCount
       }
     });
   } catch (err) {
@@ -229,6 +239,103 @@ router.get('/doctors', requireAdmin(), async (req, res) => {
   }
 });
 
+// POST /api/admin/special-appointments — allocate a 5 PM or 6 PM walk-in to the first free doctor
+router.post('/special-appointments', requireAdmin(), async (req, res) => {
+  try {
+    const { patientName, phone, date, slot, reason } = req.body || {};
+    const cleanName = typeof patientName === 'string' ? patientName.trim() : '';
+    const cleanPhone = typeof phone === 'string' ? phone.trim() : '';
+    const cleanReason = typeof reason === 'string' ? reason.trim() : '';
+
+    if (!cleanName || cleanName.length > 120) {
+      return res.status(400).json({ success: false, message: 'A valid patient name is required.' });
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+      return res.status(400).json({ success: false, message: 'Date must use YYYY-MM-DD format.' });
+    }
+    if (!SPECIAL_CASE_SLOTS.includes(slot)) {
+      return res.status(400).json({ success: false, message: 'Special cases may only use 17:00 - 18:00 or 18:00 - 19:00.' });
+    }
+
+    const doctors = await getCol('doctors')
+      .find({ retired: { $ne: true } }, { projection: { password: 0 } })
+      .toArray();
+    doctors.sort((a, b) =>
+      getDoctorBookingPriority(a) - getDoctorBookingPriority(b) ||
+      String(a._id).localeCompare(String(b._id))
+    );
+
+    const appointmentDate = parseAppointmentDate(date);
+    const { start, end } = getDayRange(date);
+    let assignedDoctor = null;
+
+    for (const doctor of doctors) {
+      if (!doctor.isAvailable) continue;
+      const appointments = getDoctorCol(doctor._id, 'appointments');
+      const slotTaken = await appointments.findOne({
+        doctorId: String(doctor._id),
+        appointmentDate: { $gte: start, $lte: end },
+        slot,
+        status: { $ne: 'cancelled' }
+      });
+      if (!slotTaken) {
+        assignedDoctor = doctor;
+        break;
+      }
+    }
+
+    if (!assignedDoctor) {
+      return res.status(409).json({
+        success: false,
+        message: 'Both doctors are already assigned for this special-case slot.'
+      });
+    }
+
+    const appointments = getDoctorCol(assignedDoctor._id, 'appointments');
+    const tokenNumber = slot === '17:00 - 18:00' ? 7 : 8;
+    const result = await appointments.insertOne({
+      patientId: null,
+      doctorId: String(assignedDoctor._id),
+      patientName: cleanName,
+      patientPhone: cleanPhone,
+      specialCase: true,
+      specialCaseReason: cleanReason,
+      appointmentDate,
+      session: 'SP',
+      slot,
+      tokenNumber,
+      status: 'waiting',
+      queuePosition: 1,
+      consultationDurationMinutes: Number(assignedDoctor.consultationTime) || CONSULTATION_MINUTES,
+      estimatedWaitTime: 0,
+      bookedAt: new Date(),
+      bookedBy: 'admin',
+      consultationStartedAt: null,
+      completedAt: null,
+      notes: cleanReason
+    });
+    await recalculateQueue(assignedDoctor._id, appointmentDate);
+
+    res.status(201).json({
+      success: true,
+      message: `Special case allotted to ${assignedDoctor.name} for ${slot}.`,
+      appointment: {
+        _id: result.insertedId,
+        doctorId: String(assignedDoctor._id),
+        doctorName: assignedDoctor.name,
+        patientName: cleanName,
+        date,
+        slot,
+        tokenNumber,
+        specialCase: true
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Error allocating the special-case appointment.' });
+  }
+});
+
 // GET /api/admin/appointments — overall view of all appointments
 router.get('/appointments', requireAdmin(), async (req, res) => {
   try {
@@ -251,10 +358,14 @@ router.get('/appointments', requireAdmin(), async (req, res) => {
     const enriched = await Promise.all(apts.map(async a => {
       let patient = null;
       let doctor = null;
-      try {
-        patient = await users.findOne({ _id: new ObjectId(String(a.patientId)) }, { projection: { password: 0 } });
-      } catch (e) {
-        patient = await users.findOne({ _id: String(a.patientId) }, { projection: { password: 0 } });
+      if (a.specialCase) {
+        patient = { name: a.patientName, phone: a.patientPhone, specialCase: true };
+      } else {
+        try {
+          patient = await users.findOne({ _id: new ObjectId(String(a.patientId)) }, { projection: { password: 0 } });
+        } catch (e) {
+          patient = await users.findOne({ _id: String(a.patientId) }, { projection: { password: 0 } });
+        }
       }
 
       try {

@@ -92,7 +92,7 @@
                 ${schedule.appointments.map(appointment => `
                   <tr>
                     <td>#${escapeHTML(appointment.tokenNumber)}</td>
-                    <td>${escapeHTML(appointment.patient?.name || 'Patient')}</td>
+                    <td>${escapeHTML(appointment.patient?.name || 'Patient')}${appointment.specialCase ? '<div style="font-size:11px;color:#f59e0b;font-weight:700;">SPECIAL CASE · Physically enquired</div>' : ''}</td>
                     <td>${escapeHTML(appointment.session || '')} · ${escapeHTML(appointment.slot || '')}</td>
                     <td>${statusBadge(appointment.status)}</td>
                   </tr>

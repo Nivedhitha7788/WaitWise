@@ -47,16 +47,30 @@ router.get('/queue', requireDoctor(), async (req, res) => {
         tokenNumber: 1,
         status: 1,
         queuePosition: 1,
-        estimatedWaitTime: 1
+        estimatedWaitTime: 1,
+        specialCase: 1,
+        specialCaseReason: 1,
+        patientName: 1,
+        patientPhone: 1,
+        bookedBy: 1
       }
     }).sort({ tokenNumber: 1 }).toArray();
 
     const enriched = await Promise.all(apts.map(async a => {
       let patient = null;
-      try {
-        patient = await users.findOne({ _id: new ObjectId(String(a.patientId)) }, { projection: { _id: 0, name: 1 } });
-      } catch (e) {
-        patient = await users.findOne({ _id: String(a.patientId) }, { projection: { _id: 0, name: 1 } });
+      if (a.specialCase) {
+        patient = {
+          name: a.patientName,
+          phone: a.patientPhone,
+          specialCase: true,
+          specialCaseReason: a.specialCaseReason
+        };
+      } else {
+        try {
+          patient = await users.findOne({ _id: new ObjectId(String(a.patientId)) }, { projection: { _id: 0, name: 1 } });
+        } catch (e) {
+          patient = await users.findOne({ _id: String(a.patientId) }, { projection: { _id: 0, name: 1 } });
+        }
       }
       return { ...a, patient };
     }));

@@ -60,6 +60,10 @@
             <div class="stat-icon">✅</div>
             <div><div class="stat-value" id="s-done">0</div><div class="stat-label">Completed Consultations</div></div>
           </div>
+          <div class="stat-card" style="border-left-color: #ef4444;">
+            <div class="stat-icon">✕</div>
+            <div><div class="stat-value" id="s-cancelled">0</div><div class="stat-label">Patient Cancellations Today</div></div>
+          </div>
         </div>
 
         <div class="card">
@@ -153,6 +157,44 @@
 
       <!-- TAB 3: APPOINTMENTS QUEUE OVERVIEW -->
       <div id="tab-appointments" class="hidden">
+        <div id="cancellationNotice" class="alert alert-warn hidden" aria-live="polite"></div>
+        <div class="card" style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:6px;">Accommodate Special Case</div>
+          <div class="orange-bar-left"></div>
+          <p class="section-subtitle">For patients who physically enquire at the hospital. The system assigns the first available doctor, by priority, to the 5–6 PM or 6–7 PM slot.</p>
+          <div id="specialCaseAlert"></div>
+          <form id="specialCaseForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="specialName">Patient Name <span class="req">*</span></label>
+                <input class="form-input" type="text" id="specialName" maxlength="120" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="specialPhone">Phone</label>
+                <input class="form-input" type="tel" id="specialPhone" maxlength="40" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="specialDate">Date <span class="req">*</span></label>
+                <input class="form-input" type="date" id="specialDate" required />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="specialSlot">Special Slot <span class="req">*</span></label>
+                <select class="form-select" id="specialSlot" required>
+                  <option value="">Select slot</option>
+                  <option value="17:00 - 18:00">17:00 - 18:00 (5–6 PM)</option>
+                  <option value="18:00 - 19:00">18:00 - 19:00 (6–7 PM)</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:2;">
+                <label class="form-label" for="specialReason">Reason / Physical Enquiry Note</label>
+                <input class="form-input" type="text" id="specialReason" maxlength="500" />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-orange" id="specialCaseBtn">Assign First Free Doctor &rarr;</button>
+          </form>
+        </div>
         <div class="card">
           <div class="section-header">
             <div>
@@ -264,6 +306,7 @@
         $('#s-waiting').textContent  = data.waitingCount;
         $('#s-incon').textContent    = data.inConsultationCount;
         $('#s-done').textContent     = data.completedCount;
+        $('#s-cancelled').textContent = data.patientCancelledCount || 0;
       } catch (e) {
         console.error(e);
       }
@@ -369,6 +412,17 @@
       try {
         const { appointments } = await api('GET', '/api/admin/appointments');
         const wrap = $('#appointmentsWrap');
+        const patientCancellations = appointments.filter(a =>
+          a.status === 'cancelled' && a.cancelledBy === 'patient'
+        );
+        const cancellationNotice = $('#cancellationNotice');
+        if (patientCancellations.length) {
+          const latest = patientCancellations[0];
+          cancellationNotice.classList.remove('hidden');
+          cancellationNotice.innerHTML = `Cancellation received: <b>${escapeHTML(latest.patient?.name || 'Patient')}</b> cancelled token #${escapeHTML(latest.tokenNumber)} for ${fmtDate(latest.appointmentDate)}${latest.cancelledAt ? ` at ${new Date(latest.cancelledAt).toLocaleTimeString(I18n.locale, { hour: '2-digit', minute: '2-digit' })}` : ''}.`;
+        } else {
+          cancellationNotice.classList.add('hidden');
+        }
         if (!appointments.length) {
           wrap.innerHTML = '<p style="color:#94a3b8; text-align:center; padding:30px 0;">No appointments recorded in the system yet.</p>';
           return;
@@ -382,7 +436,7 @@
               <tbody>${appointments.map(a => `
                 <tr>
                   <td><div style="width:38px; height:38px; background:rgba(255,255,255,0.06); border:1px solid var(--accent-orange); border-radius:2px; display:flex; align-items:center; justify-content:center; color:var(--accent-orange); font-family:var(--font-serif); font-weight:700; font-size:16px;">#${a.tokenNumber}</div></td>
-                  <td><div style="font-weight:700; color:#ffffff;">${a.patient?.name || 'Patient'}</div><div style="font-size:12px; color:#64748b;">${a.patient?.phone || a.patient?.email || ''}</div></td>
+                  <td><div style="font-weight:700; color:#ffffff;">${a.patient?.name || 'Patient'}${a.specialCase ? '<span style="margin-left:6px;font-size:10px;color:#f59e0b;font-weight:700;">SPECIAL CASE</span>' : ''}</div><div style="font-size:12px; color:#64748b;">${a.patient?.phone || a.patient?.email || ''}</div></td>
                   <td><div style="font-family:var(--font-serif); font-weight:700;">${a.doctor?.name || 'Doctor'}</div><div style="font-size:12px; color:var(--accent-orange);">${a.doctor?.specialization || ''}</div></td>
                   <td data-appointment-date="${escapeHTML(a.appointmentDate)}">${fmtDate(a.appointmentDate)}</td>
                   <td><b>${a.session || ''} Session · ${a.slot}</b></td>
@@ -458,9 +512,43 @@
     $('#refreshBtn').onclick = () => { loadStats(); loadDoctors(); loadAppointments(); };
     $('#aptRefreshBtn').onclick = loadAppointments;
 
+    const specialDate = $('#specialDate');
+    const localToday = new Date();
+    localToday.setMinutes(localToday.getMinutes() - localToday.getTimezoneOffset());
+    specialDate.value = localToday.toISOString().slice(0, 10);
+
+    $('#specialCaseForm').onsubmit = async (event) => {
+      event.preventDefault();
+      clearAlert($('#specialCaseAlert'));
+      const button = $('#specialCaseBtn');
+      button.disabled = true;
+      try {
+        const result = await api('POST', '/api/admin/special-appointments', {
+          patientName: $('#specialName').value,
+          phone: $('#specialPhone').value,
+          date: specialDate.value,
+          slot: $('#specialSlot').value,
+          reason: $('#specialReason').value
+        });
+        showAlert($('#specialCaseAlert'), 'success',
+          `${result.message} Patient: ${result.appointment.patientName}, Token #${result.appointment.tokenNumber}.`);
+        $('#specialCaseForm').reset();
+        specialDate.value = localToday.toISOString().slice(0, 10);
+        await Promise.all([loadAppointments(), loadStats(), loadDoctors()]);
+      } catch (err) {
+        showAlert($('#specialCaseAlert'), 'error', err.message || 'Failed to allocate special-case appointment.');
+      } finally {
+        button.disabled = false;
+      }
+    };
+
     loadStats();
     loadDoctors();
     loadAppointments();
+    setInterval(() => {
+      loadStats();
+      loadAppointments();
+    }, 10000);
   </script>
 </body>
 </html>
