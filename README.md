@@ -26,7 +26,7 @@
 
 - **Users:** Patient and admin profile fields, role, and a hashed password. The patient registration page creates patient accounts; additional admin accounts can only be created by an authenticated admin.
 - **Doctors:** Name, email, hashed password, specialization, consultation duration, weekly availability slots, current availability and reason, registration metadata, and creation time.
-- **Appointments (doctor-specific databases):** Patient and doctor IDs, appointment date, session and slot, token and queue position, estimated wait in minutes, 60-minute consultation duration, status, consultation start/completion timestamps, booking timestamp, and consultation notes. Wait estimates project the active consultation and each waiting patient's scheduled slot, including gaps between sessions, and are refreshed as queue state changes and during patient token tracking.
+- **Appointments (doctor-specific databases):** Patient and doctor IDs, appointment date, session and slot, token and queue position, 60-minute consultation duration, status, consultation start/completion timestamps, booking timestamp, and consultation notes.
 
 ---
 
@@ -34,8 +34,9 @@
 
 ### 1. 🧑‍⚕️ Patient Interface
 - **Home Navigation:** Simple, uncluttered landing page with single-click navigation to Register or Login.
-- **Appointment Booking:** Select a General Psychiatry doctor, date, session, and one of the fixed one-hour consultation times.
-- **Digital Token Generation:** Instant issuance of Token Number with initial queue position and estimated wait time.
+- **Appointment Booking:** Select a General Psychiatry doctor and one of the fixed one-hour consultation times on a date in the rolling three-day booking window, which opens three days ahead.
+- **Queue Status:** Future appointments appear as scheduled and move into the waiting queue on their appointment date.
+- **Digital Token Generation:** Instant issuance of a Token Number and initial queue position.
 - **Frequent Token Tracking:** Live visual progress bar, real-time patients ahead countdown, current room occupant, and audio/banner alerts when turn arrives.
 - **Queue Auto-Update:** As doctors finish with patients, the queue automatically advances.
 - **Visit Feedback:** Patients can submit one 1–5 star rating and comment after a visit is marked completed.

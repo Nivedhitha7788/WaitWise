@@ -5,7 +5,6 @@ const { ObjectId, getCol, getDoctorCol, ensureDoctorDatabase } = require('../db/
 const { requireAdmin } = require('../middleware/auth');
 const { getDayRange, parseAppointmentDate } = require('../utils/dateHelper');
 const { findAppointmentsAcrossDoctors, findAppointmentAcrossDoctors } = require('../utils/appointmentStore');
-const { calculateEstimatedWaitTime } = require('../utils/waitTime');
 const {
   CLINIC_SPECIALIZATION,
   CONSULTATION_MINUTES,
@@ -26,20 +25,12 @@ async function recalculateQueue(doctorId, appointmentDate) {
     doctorId: doctorIdString,
     appointmentDate: { $gte: start, $lte: end }
   };
-  const [waiting, activeConsultation] = await Promise.all([
-    appointments.find({ ...query, status: 'waiting' }).sort({ tokenNumber: 1 }).toArray(),
-    appointments.findOne({ ...query, status: 'in-consultation' })
-  ]);
+  const waiting = await appointments.find({ ...query, status: 'waiting' }).sort({ tokenNumber: 1 }).toArray();
 
   for (let index = 0; index < waiting.length; index++) {
-    const estimatedWaitTime = calculateEstimatedWaitTime(
-      waiting[index],
-      waiting.slice(0, index),
-      activeConsultation
-    );
     await appointments.updateOne(
       { _id: waiting[index]._id },
-      { $set: { queuePosition: index + 1, estimatedWaitTime } }
+      { $set: { queuePosition: index + 1 }, $unset: { estimatedWaitTime: '' } }
     );
   }
 }
@@ -374,7 +365,8 @@ router.get('/appointments', requireAdmin(), async (req, res) => {
         doctor = await doctors.findOne({ _id: String(a.doctorId) }, { projection: { password: 0 } });
       }
 
-      return { ...a, patient, doctor };
+      const { estimatedWaitTime, ...appointment } = a;
+      return { ...appointment, patient, doctor };
     }));
 
     res.json({ success: true, appointments: enriched });
@@ -404,8 +396,6 @@ router.patch('/appointments/:id/status', requireAdmin(), async (req, res) => {
     if (status === 'in-consultation') {
       update.consultationStartedAt = new Date();
       update.consultationDurationMinutes = Number(appointment.consultationDurationMinutes) || CONSULTATION_MINUTES;
-    } else {
-      update.estimatedWaitTime = 0;
     }
     if (status === 'completed') {
       update.completedAt = new Date();
@@ -415,7 +405,7 @@ router.patch('/appointments/:id/status', requireAdmin(), async (req, res) => {
 
     await getDoctorCol(appointment.doctorId, 'appointments').updateOne(
       { _id: appointment._id },
-      { $set: update }
+      { $set: update, $unset: { estimatedWaitTime: '' } }
     );
     await recalculateQueue(appointment.doctorId, appointment.appointmentDate);
     res.json({ success: true, message: `Appointment status updated to ${status}.` });

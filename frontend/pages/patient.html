@@ -282,9 +282,36 @@
     let trackerCountdown = 10;
     let currentTrackingId = null;
 
+    function getClinicDateKey(date = new Date()) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(date);
+      const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+      return `${values.year}-${values.month}-${values.day}`;
+    }
+
+    function addDaysToDateKey(dateKey, days) {
+      const [year, month, day] = dateKey.split('-').map(Number);
+      const date = new Date(Date.UTC(year, month - 1, day + days));
+      return [
+        date.getUTCFullYear(),
+        String(date.getUTCMonth() + 1).padStart(2, '0'),
+        String(date.getUTCDate()).padStart(2, '0')
+      ].join('-');
+    }
+
+    const firstBookingDate = addDaysToDateKey(getClinicDateKey(), 3);
+    const lastBookingDate = addDaysToDateKey(firstBookingDate, 2);
+    $('#dateInput').min = firstBookingDate;
+    $('#dateInput').max = lastBookingDate;
+    $('#dateInput').value = firstBookingDate;
+
     async function loadDoctors() {
       try {
-        const date = $('#dateInput').value || todayStr;
+        const date = $('#dateInput').value || firstBookingDate;
         const res = await api('GET', `/api/patient/doctors/all?date=${encodeURIComponent(date)}`);
         doctors = res.doctors || [];
         const sel = $('#doctorSelect');
@@ -302,15 +329,17 @@
             const availability = !d.isAvailable
               ? `Unavailable${d.unavailabilityReason ? ` — ${d.unavailabilityReason}` : ''}`
               : d.availableSlotsCount === 0
-                ? d.bookingFullyBooked ? 'Fully booked' : 'No bookable slots on this date'
+                ? d.bookingFullyBooked ? 'Fully booked — check other dates' : 'No bookable slots on this date'
                 : d.bookingEnabled
                   ? `${d.availableSlotsCount} slots available`
                   : 'Available after Priya is fully booked';
-            return `<option value="${escapeHTML(d._id)}" ${d.bookingEnabled ? '' : 'disabled'}>${escapeHTML(d.name)} — ${escapeHTML(d.specialization)} [${escapeHTML(availability)}]</option>`;
+            const canShowSuggestions = d.isAvailable && d.availableSlotsCount === 0 && Boolean(d.bookingBlockReason);
+            return `<option value="${escapeHTML(d._id)}" ${d.bookingEnabled || canShowSuggestions ? '' : 'disabled'}>${escapeHTML(d.name)} — ${escapeHTML(d.specialization)} [${escapeHTML(availability)}]</option>`;
           }).join('');
         const selectedDoctor = doctors.find(d =>
           String(d._id) === String(currentSelection) && d.bookingEnabled
-        ) || doctors.find(d => d.bookingEnabled);
+        ) || doctors.find(d => d.bookingEnabled) ||
+          doctors.find(d => d.isAvailable && d.availableSlotsCount === 0 && d.bookingBlockReason);
         sel.value = selectedDoctor ? String(selectedDoctor._id) : '';
         if (sel.value) {
           loadSlots();
@@ -384,7 +413,7 @@
       info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
       $('#dateInput').disabled = false;
       $('#dateSection').style.display = '';
-      if (!$('#dateInput').value) $('#dateInput').value = todayStr;
+      if (!$('#dateInput').value) $('#dateInput').value = firstBookingDate;
       const date = $('#dateInput').value;
       selectedSlot = null;
       selectedSession = null;
@@ -456,9 +485,6 @@
     }
 
     $('#doctorSelect').onchange = loadSlots;
-    const todayStr = new Date().toISOString().split('T')[0];
-    $('#dateInput').min = todayStr;
-    $('#dateInput').value = todayStr;
     $('#dateInput').onchange = loadDoctors;
 
     $('#bookForm').onsubmit = async (e) => {
@@ -481,7 +507,7 @@
         });
         const a = res.appointment;
         showAlert($('#bookAlert'), 'success',
-          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b> &bull; Est. wait: <b>${formatWaitTime(a.estimatedWaitTime)}</b>.`);
+          `✅ <b>Token #${a.tokenNumber} Generated!</b> Initial Queue Position: <b>#${a.queuePosition}</b>.`);
 
         selectedSlot = null;
         await loadDoctors();
@@ -536,15 +562,14 @@
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                  ${statusBadge(a.status)}
+                  ${statusBadge(a.status, a.appointmentDate)}
                   ${isActive ? `<button class="btn btn-outline-orange btn-sm" onclick="openTracker('${a._id}')" style="font-weight:700;">🔍 Track Live Queue</button>` : ''}
                   ${a.status === 'waiting' ? `<button class="btn btn-sm btn-danger" onclick="cancelApt('${a._id}')">✕ Cancel</button>` : ''}
                 </div>
               </div>
               ${a.status === 'waiting' ? `
                 <div style="margin-top:16px;display:flex;gap:28px;flex-wrap:wrap;padding-top:14px;border-top:1px solid rgba(255,255,255,0.06);font-size:13px;">
-                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Queue Position</span><b style="color:#ffffff;font-family:var(--font-serif);font-size:17px;">#${a.queuePosition}</b></div>
-                  <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Est. Wait Remaining</span><b style="color:var(--accent-orange);font-family:var(--font-serif);font-size:17px;">${formatWaitTime(a.estimatedWaitTime)}</b></div>
+                  ${isAppointmentToday(a.appointmentDate) ? `<div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Queue Position</span><b style="color:#ffffff;font-family:var(--font-serif);font-size:17px;">#${a.queuePosition}</b></div>` : ''}
                   <div><span style="font-size:10px;color:var(--text-muted);display:block;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Hospital Entry</span><span style="color:#10b981;font-weight:700;">Remain Off-Site Until Turn</span></div>
                 </div>
               ` : ''}
@@ -651,6 +676,8 @@
         const { token: t } = await api('GET', `/api/patient/token/${currentTrackingId}`);
 
         let statusMsg = '';
+        const isScheduled = t.status === 'waiting' &&
+          clinicDateKey(new Date(t.appointmentDate)) > clinicDateKey();
         if (t.status === 'completed') {
           statusMsg = '✅ Consultation complete. Thank you!';
         } else if (t.status === 'cancelled') {
@@ -658,6 +685,8 @@
         } else if (t.status === 'in-consultation') {
           statusMsg = '🩺 You are currently inside the Consultation Room.';
           triggerTurnNotification(t.doctor?.name, t.tokenNumber);
+        } else if (isScheduled) {
+          statusMsg = `📅 Appointment scheduled for ${fmtDate(t.appointmentDate)}. Queue updates begin on the appointment day.`;
         } else if (t.patientsAhead === 0) {
           statusMsg = '🔔 YOUR TURN IS NEXT! Please proceed to the room.';
           triggerTurnNotification(t.doctor?.name, t.tokenNumber);
@@ -667,6 +696,7 @@
 
         const progressPct = t.status === 'completed' ? 100 :
           t.status === 'in-consultation' ? 95 :
+          isScheduled ? 0 :
           t.patientsAhead === 0 ? 80 :
           Math.max(15, 100 - (t.patientsAhead * 20));
 
@@ -684,16 +714,12 @@
             ${statusMsg}
           </div>
 
-          ${t.status === 'waiting' ? `
+          ${t.status === 'waiting' && !isScheduled ? `
             <div class="info-grid">
               <div class="info-cell">
                 <div class="info-cell-label">Queue Position</div>
                 <div class="info-cell-val" style="color:var(--accent-orange);">#${t.queuePosition}</div>
                 <div class="info-cell-sub">${t.patientsAhead} ahead</div>
-              </div>
-              <div class="info-cell">
-                <div class="info-cell-label">Est. Wait Time</div>
-                <div class="info-cell-val" style="color:#ffffff;">${formatWaitTime(t.estimatedWaitTime)}</div>
               </div>
             </div>
 

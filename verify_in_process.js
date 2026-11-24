@@ -1,45 +1,18 @@
 const app = require('./backend/server');
 const { connectDB, getCol, getDoctorCol, getDoctorDBName } = require('./backend/db/connection');
 const assert = require('assert');
-const { getClinicDateKey } = require('./backend/utils/clinicConfig');
+const { getClinicDateKey, getBookingWindow, isBookableDate } = require('./backend/utils/clinicConfig');
 const { getDayRange } = require('./backend/utils/dateHelper');
-const { calculateEstimatedWaitTime } = require('./backend/utils/waitTime');
 
-const waitTimeNow = new Date('2026-11-24T08:30:00+05:30');
-const waitingForElevenThirty = {
-  status: 'waiting',
-  appointmentDate: new Date('2026-11-24T12:00:00+05:30'),
-  slot: '11:30 - 12:30',
-  consultationDurationMinutes: 60
-};
-const waitingAhead = [
-  {
-    appointmentDate: waitingForElevenThirty.appointmentDate,
-    slot: '09:00 - 10:00',
-    consultationDurationMinutes: 60
-  },
-  {
-    appointmentDate: waitingForElevenThirty.appointmentDate,
-    slot: '10:15 - 11:15',
-    consultationDurationMinutes: 60
-  }
-];
-assert.strictEqual(
-  calculateEstimatedWaitTime(waitingForElevenThirty, waitingAhead, null, waitTimeNow),
-  180,
-  'Wait estimate should account for scheduled gaps between consultations.'
+const fixedBookingWindow = getBookingWindow(new Date('2026-11-24T12:00:00+05:30'));
+assert.deepStrictEqual(
+  fixedBookingWindow.dates,
+  ['2026-11-27', '2026-11-28', '2026-11-29'],
+  'The booking window should start three days ahead and show exactly three dates.'
 );
-assert.strictEqual(
-  calculateEstimatedWaitTime({
-    status: 'waiting',
-    appointmentDate: new Date('2026-11-28T12:00:00+05:30'),
-    slot: '11:30 - 12:30',
-    tokenNumber: 3,
-    consultationDurationMinutes: 60
-  }, [], null, new Date('2026-11-24T15:06:00+05:30')),
-  5544,
-  'Future appointments should show the time until their scheduled slot even when nobody is ahead.'
-);
+assert.strictEqual(isBookableDate('2026-11-27', new Date('2026-11-24T12:00:00+05:30')), true);
+assert.strictEqual(isBookableDate('2026-11-24', new Date('2026-11-24T12:00:00+05:30')), false);
+assert.strictEqual(isBookableDate('2026-11-30', new Date('2026-11-24T12:00:00+05:30')), false);
 
 function formatLocalDate(date) {
   return [
@@ -127,42 +100,6 @@ async function verifyAll() {
   const secondDoctorProfile = await getDoctorCol(secondDoctor._id, 'doctorProfile')
     .findOne({ doctorId: String(secondDoctor._id) });
   assert.strictEqual(secondDoctorProfile.name, 'Dr. Priya Patel');
-  assert.strictEqual(
-    calculateEstimatedWaitTime({
-      appointmentDate: new Date('2026-11-18T06:30:00.000Z'),
-      slot: '09:00 - 10:00',
-      tokenNumber: 1,
-      status: 'waiting'
-    }, [], null, new Date('2026-11-18T03:25:00.000Z')),
-    5,
-    'The first token wait should be the exact time until its scheduled start.'
-  );
-  assert.strictEqual(
-    calculateEstimatedWaitTime(
-      { tokenNumber: 3, status: 'waiting', consultationDurationMinutes: 60 },
-      [{}, {}],
-      { consultationDurationMinutes: 60, consultationStartedAt: new Date('2026-11-18T03:00:00.000Z') },
-      new Date('2026-11-18T03:10:00.000Z')
-    ),
-    170,
-    'Waits should include live active consultation time and the duration of waiting patients ahead.'
-  );
-  assert.strictEqual(
-    calculateEstimatedWaitTime(
-      {
-        appointmentDate: new Date('2026-11-19T06:30:00.000Z'),
-        slot: '10:15 - 11:15',
-        tokenNumber: 2,
-        status: 'waiting',
-        consultationDurationMinutes: 60
-      },
-      0,
-      null,
-      new Date('2026-11-18T16:00:00.000Z')
-    ),
-    765,
-    'The first token for a later slot should wait until that slot scheduled start, not display zero.'
-  );
   try {
   await doctorsCol.updateOne({ email: 'dr.sharma@waitwise.com' }, { $set: { isAvailable: true, unavailabilityReason: '' } });
   console.log('DB ready (test state initialized).\n');
@@ -292,11 +229,9 @@ async function verifyAll() {
   const secondBookingDoctor = docsRes.body.doctors.find(d => d.email === 'dr.sharma@waitwise.com');
   let appointmentDate = null;
   let todayStr = '';
-  for (let offset = 1; offset <= 365; offset++) {
-    const candidate = new Date();
-    candidate.setDate(candidate.getDate() + offset);
+  for (const candidateKey of getBookingWindow().dates) {
+    const candidate = new Date(`${candidateKey}T12:00:00`);
     if (candidate.getDay() === 0) continue;
-    const candidateKey = formatLocalDate(candidate);
     const { start, end } = getDayRange(candidateKey);
     const [primaryCount, secondaryCount] = await Promise.all([
       getDoctorCol(targetDoctor._id, 'appointments').countDocuments({
@@ -340,6 +275,14 @@ async function verifyAll() {
   }, { authorization: `Bearer ${patientToken}` });
   assert.strictEqual(blockedSecondDoctorBooking.statusCode, 409);
 
+  const outsideWindowBooking = await mockRequest(app, 'POST', '/api/patient/book', {
+    doctorId: targetDoctor._id,
+    date: getClinicDateKey(),
+    session: 'FN',
+    slot: '09:00 - 10:00'
+  }, { authorization: `Bearer ${patientToken}` });
+  assert.strictEqual(outsideWindowBooking.statusCode, 400);
+
   const policyTestAppointments = getDoctorCol(targetDoctor._id, 'appointments');
   await policyTestAppointments.insertMany([
     '09:00 - 10:00',
@@ -358,6 +301,45 @@ async function verifyAll() {
     status: 'waiting',
     bookingPolicyTest: true
   })));
+  const fullDateSlots = await mockRequest(
+    app,
+    'GET',
+    `/api/patient/doctors/${targetDoctor._id}/slots?date=${todayStr}`,
+    null,
+    { authorization: `Bearer ${patientToken}` }
+  );
+  assert.strictEqual(fullDateSlots.body.bookingEnabled, false);
+  const otherBookingDates = getBookingWindow().dates.filter(date => date !== todayStr);
+  const nextBookingDate = otherBookingDates.find(date => date > todayStr);
+  let suggestedSlot = null;
+  const checkSuggestionDate = async candidateKey => {
+    const candidateSlots = await mockRequest(
+      app,
+      'GET',
+      `/api/patient/doctors/${targetDoctor._id}/slots?date=${candidateKey}`,
+      null,
+      { authorization: `Bearer ${patientToken}` }
+    );
+    if (candidateSlots.body.slots && candidateSlots.body.slots.length) {
+      return { date: candidateKey, slot: candidateSlots.body.slots[0] };
+    }
+    return null;
+  };
+  if (nextBookingDate) suggestedSlot = await checkSuggestionDate(nextBookingDate);
+  if (!suggestedSlot) {
+    for (const candidateKey of otherBookingDates) {
+      if (candidateKey === nextBookingDate) continue;
+      suggestedSlot = await checkSuggestionDate(candidateKey);
+      if (suggestedSlot) break;
+    }
+  }
+  if (suggestedSlot) {
+    assert(fullDateSlots.body.message.includes(suggestedSlot.date));
+    assert(fullDateSlots.body.message.includes(suggestedSlot.slot));
+  } else {
+    assert.match(fullDateSlots.body.message, /No slots are currently available/);
+  }
+
   const unlockedBookingDoctors = await mockRequest(app, 'GET', `/api/patient/doctors/all?date=${todayStr}`, null, {
     authorization: `Bearer ${patientToken}`
   });
@@ -415,17 +397,15 @@ async function verifyAll() {
   });
   assert(savedAppointment);
   assert.strictEqual(savedAppointment.consultationDurationMinutes, 60);
-  assert.strictEqual(typeof savedAppointment.estimatedWaitTime, 'number');
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(savedAppointment, 'estimatedWaitTime'), false);
   assert.strictEqual(await getCol('appointments').countDocuments({ _id: savedAppointment._id }), 0);
   assert.strictEqual(savedAppointment.session, 'FN');
   assert.strictEqual(savedAppointment.status, 'waiting');
   assert.strictEqual(savedAppointment.tokenNumber, bookRes.body.appointment.tokenNumber);
 
   let laterBooking = null;
-  for (let offset = 1; offset <= 14 && !laterBooking; offset++) {
-    const candidate = new Date(appointmentDate);
-    candidate.setDate(candidate.getDate() + offset);
-    const candidateKey = formatLocalDate(candidate);
+  for (const candidateKey of getBookingWindow().dates) {
+    if (laterBooking) break;
     const candidateSlots = await mockRequest(app, 'GET', `/api/patient/doctors/${targetDoctor._id}/slots?date=${candidateKey}`, null, {
       authorization: `Bearer ${patientToken}`
     });
@@ -451,6 +431,7 @@ async function verifyAll() {
     authorization: `Bearer ${patientToken}`
   });
   console.log('Token tracker status:', trackRes.body.token);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(trackRes.body.token, 'estimatedWaitTime'), false);
   const earlyFeedback = await mockRequest(app, 'POST', '/api/patient/feedback', {
     appointmentId,
     rating: 5,

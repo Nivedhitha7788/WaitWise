@@ -47,7 +47,6 @@ router.get('/queue', requireDoctor(), async (req, res) => {
         tokenNumber: 1,
         status: 1,
         queuePosition: 1,
-        estimatedWaitTime: 1,
         specialCase: 1,
         specialCaseReason: 1,
         patientName: 1,
