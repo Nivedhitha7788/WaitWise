@@ -58,7 +58,7 @@
 
             <div class="form-group" id="dateSection" style="display:none;">
               <label class="form-label">Select Consultation Date <span class="req">*</span></label>
-              <input class="form-input" type="date" id="dateInput" disabled style="max-width:240px;" />
+              <select class="form-select" id="dateInput" disabled style="max-width:240px;"></select>
             </div>
 
             <div class="form-group" id="slotsSection" style="display:none;">
@@ -303,10 +303,17 @@
       ].join('-');
     }
 
-    const firstBookingDate = addDaysToDateKey(getClinicDateKey(), 3);
-    const lastBookingDate = addDaysToDateKey(firstBookingDate, 2);
-    $('#dateInput').min = firstBookingDate;
-    $('#dateInput').max = lastBookingDate;
+    const bookingDates = [];
+    let nextBookingDate = addDaysToDateKey(getClinicDateKey(), 3);
+    while (bookingDates.length < 3) {
+      const dayOfWeek = new Date(`${nextBookingDate}T00:00:00Z`).getUTCDay();
+      if (dayOfWeek !== 0) bookingDates.push(nextBookingDate);
+      nextBookingDate = addDaysToDateKey(nextBookingDate, 1);
+    }
+    const firstBookingDate = bookingDates[0];
+    $('#dateInput').innerHTML = bookingDates
+      .map(date => `<option value="${date}">${fmtDate(date)}</option>`)
+      .join('');
     $('#dateInput').value = firstBookingDate;
 
     async function loadDoctors() {

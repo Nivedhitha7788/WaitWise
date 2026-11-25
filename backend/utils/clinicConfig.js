@@ -55,10 +55,13 @@ function addDaysToDateKey(dateKey, days) {
 }
 
 function getBookingWindow(now = new Date()) {
-  const firstDate = addDaysToDateKey(getClinicDateKey(now), BOOKING_DAYS_AHEAD);
-  const dates = Array.from({ length: BOOKING_WINDOW_DAYS }, (_, index) =>
-    addDaysToDateKey(firstDate, index)
-  );
+  const dates = [];
+  let date = addDaysToDateKey(getClinicDateKey(now), BOOKING_DAYS_AHEAD);
+  while (dates.length < BOOKING_WINDOW_DAYS) {
+    const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+    if (dayOfWeek !== 0) dates.push(date);
+    date = addDaysToDateKey(date, 1);
+  }
   return { minDate: dates[0], maxDate: dates[dates.length - 1], dates };
 }
 
@@ -66,8 +69,7 @@ function isBookableDate(date, now = new Date()) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const parsed = new Date(`${date}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) return false;
-  const { minDate, maxDate } = getBookingWindow(now);
-  return date >= minDate && date <= maxDate;
+  return getBookingWindow(now).dates.includes(date);
 }
 
 function isPastClinicSlot(date, slot, now = new Date()) {
