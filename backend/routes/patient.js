@@ -124,6 +124,9 @@ async function getAvailableDoctorSlots(doctor, date) {
 async function getAvailabilityMessage(doctor, selectedDate) {
   const { dates } = getBookingWindow();
   const otherDates = dates.filter(date => date !== selectedDate);
+  const clinicClosed = getDaySessions(doctor, getDayName(selectedDate))
+    .every(session => !session.slots?.length);
+  const closedMessage = clinicClosed ? `The clinic has no consultation sessions on ${getDayName(selectedDate)}. ` : '';
   const suggestions = [];
   for (const date of otherDates) {
     const { availableSlots } = await getAvailableDoctorSlots(doctor, date);
@@ -133,15 +136,15 @@ async function getAvailabilityMessage(doctor, selectedDate) {
   const nextDate = otherDates.find(date => date > selectedDate);
   const nextDaySuggestion = suggestions.find(item => item.date === nextDate);
   if (nextDaySuggestion) {
-    return `No slots remain on this date. The next available slot is ${nextDaySuggestion.slots[0]} on ${nextDaySuggestion.date}.`;
+    return `${closedMessage}The next available slot is ${nextDaySuggestion.slots[0]} on ${nextDaySuggestion.date}.`;
   }
   if (suggestions.length) {
     const available = suggestions
       .map(item => `${item.date}: ${item.slots.join(', ')}`)
       .join('; ');
-    return `No slots remain on this date or the next day. Available slots in the booking window: ${available}.`;
+    return `${closedMessage}Available slots in the booking window: ${available}.`;
   }
-  return 'No slots are currently available on the other dates in this booking window.';
+  return `${closedMessage}No slots are currently available on the other dates in this booking window.`;
 }
 
 async function getDoctorsWithBookingAvailability(date) {

@@ -329,7 +329,7 @@
             const availability = !d.isAvailable
               ? `Unavailable${d.unavailabilityReason ? ` — ${d.unavailabilityReason}` : ''}`
               : d.availableSlotsCount === 0
-                ? d.bookingFullyBooked ? 'Fully booked — check other dates' : 'No bookable slots on this date'
+                ? d.bookingFullyBooked ? 'Fully booked — check other dates' : 'No clinic sessions on this date'
                 : d.bookingEnabled
                   ? `${d.availableSlotsCount} slots available`
                   : 'Available after Priya is fully booked';
@@ -528,6 +528,13 @@
       }
     };
 
+    function patientDisplayStatus(status, appointmentDate) {
+      if (!appointmentDate) return status;
+      return clinicDateKey(new Date(appointmentDate)) > clinicDateKey() && status !== 'cancelled'
+        ? 'waiting'
+        : status;
+    }
+
     async function loadMyAppointments() {
       const wrap = $('#aptsList');
       wrap.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px 0">Loading tokens...</p>';
@@ -562,7 +569,7 @@
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                  ${statusBadge(a.status, a.appointmentDate)}
+                  ${statusBadge(patientDisplayStatus(a.status, a.appointmentDate), a.appointmentDate)}
                   ${isActive ? `<button class="btn btn-outline-orange btn-sm" onclick="openTracker('${a._id}')" style="font-weight:700;">🔍 Track Live Queue</button>` : ''}
                   ${a.status === 'waiting' ? `<button class="btn btn-sm btn-danger" onclick="cancelApt('${a._id}')">✕ Cancel</button>` : ''}
                 </div>
