@@ -3,7 +3,7 @@ const router = express.Router();
 const { ObjectId, getCol, getDoctorCol } = require('../db/connection');
 const { requireDoctor } = require('../middleware/auth');
 const { getDayRange, getDayName } = require('../utils/dateHelper');
-const { SESSION_SLOTS } = require('../utils/clinicConfig');
+const { getDaySessions } = require('../utils/clinicConfig');
 
 // GET /api/doctor/profile — own profile, consultation time, slots, availability
 router.get('/profile', requireDoctor(), async (req, res) => {
@@ -111,9 +111,7 @@ router.get('/slots', requireDoctor(), async (req, res) => {
     }
 
     const dayName = getDayName(date);
-    const slotConfig = (doctor.availableSlots || []).find(s => s.day === dayName);
-    if (!slotConfig) return res.json({ success: true, slots: [], sessions: [], dayName });
-    const sessions = Array.isArray(slotConfig.sessions) ? slotConfig.sessions : SESSION_SLOTS;
+    const sessions = getDaySessions(doctor, dayName);
     const slots = sessions.flatMap(session => session.slots);
     res.json({ success: true, slots, sessions, dayName, consultationTime: doctor.consultationTime });
   } catch (err) {

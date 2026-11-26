@@ -588,6 +588,11 @@ h1, h2, h3, h4, h5, h6, .serif-heading {
   border-color: var(--accent-orange);
   box-shadow: 0 0 0 3px rgba(224, 131, 58, 0.25);
 }
+.form-select option:disabled, select option:disabled {
+  color: #64748b !important;
+  background-color: #0b1623;
+  font-style: italic;
+}
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1226,4 +1231,13 @@ tr:hover td {
 
 @media (max-width: 480px) {
   .queue-notification-stack { right: 10px; bottom: 10px; }
+}
+
+/* ── Booking Calendar ──────────────────────────────────── */
+#calGrid button:not(:disabled):hover {
+  background: rgba(224, 131, 58, 0.35) !important;
+  color: #ffffff !important;
+}
+#calGrid button:disabled {
+  pointer-events: none;
 }

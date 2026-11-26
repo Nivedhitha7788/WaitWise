@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Patient Registration — WaitWise</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
+
 <body>
   <div id="navbar"></div>
 
@@ -14,10 +16,6 @@
       <h1 class="auth-title">Patient Registration</h1>
       <div class="orange-bar"></div>
       <p class="auth-subtitle">Create an account to book outpatient consultations and receive digital tokens</p>
-
-      <div class="alert alert-info" style="font-size: 13px; margin-bottom: 22px;">
-        🩺 <b>Hospital Doctors:</b> Doctors are registered directly by Hospital Admin. Please access the <a href="/pages/login.html?role=doctor" style="color:var(--accent-orange); font-weight:700;">Doctor Login portal</a>.
-      </div>
 
       <div id="alertBox"></div>
 
@@ -42,7 +40,7 @@
         </div>
         <div class="form-group">
           <label class="form-label">Phone Number</label>
-          <input class="form-input" type="tel" id="phone" placeholder="+1 (555) 000-0000" />
+          <input class="form-input" type="tel" id="phone" placeholder="+91 00000 00000" />
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -60,7 +58,8 @@
           </div>
         </div>
 
-        <button type="submit" class="btn btn-orange btn-block" id="submitBtn" style="padding: 13px; font-size: 13px; margin-top: 10px;">
+        <button type="submit" class="btn btn-orange btn-block" id="submitBtn"
+          style="padding: 13px; font-size: 13px; margin-top: 10px;">
           Create Patient Account &rarr;
         </button>
       </form>
@@ -96,7 +95,7 @@
       clearAlert($('#alertBox'));
 
       const password = $('#password').value;
-      const confirm  = $('#confirmPassword').value;
+      const confirm = $('#confirmPassword').value;
       if (password !== confirm) return showAlert($('#alertBox'), 'error', 'Passwords do not match.');
       if (password.length < 6) return showAlert($('#alertBox'), 'error', 'Password must be at least 6 characters.');
 
@@ -110,7 +109,7 @@
           email: $('#email').value.trim(),
           password,
           phone: $('#phone').value.trim(),
-          age:   $('#age').value ? Number($('#age').value) : undefined,
+          age: $('#age').value ? Number($('#age').value) : undefined,
           gender: $('#gender').value || undefined
         });
         showAlert($('#alertBox'), 'success', '✅ Registration successful! Redirecting to sign in...');
@@ -123,4 +122,5 @@
     };
   </script>
 </body>
+
 </html>

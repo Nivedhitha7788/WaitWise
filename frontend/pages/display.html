@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,6 +12,7 @@
       color: var(--text-light);
       font-family: var(--font-sans);
     }
+
     .display-header {
       background: rgba(13, 27, 42, 0.95);
       padding: 20px 48px;
@@ -20,11 +22,13 @@
       border-bottom: 1px solid var(--border-light);
       backdrop-filter: blur(10px);
     }
+
     .display-title {
       display: flex;
       align-items: baseline;
       gap: 16px;
     }
+
     .display-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
@@ -33,6 +37,7 @@
       max-width: 1400px;
       margin: 0 auto;
     }
+
     .room-card-display {
       background: var(--bg-card);
       border: 1px solid var(--border-light);
@@ -45,10 +50,12 @@
       transition: all 0.25s ease;
       position: relative;
     }
+
     .room-card-display:hover {
       box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
       border-color: var(--accent-orange);
     }
+
     .token-display-box {
       background: rgba(8, 17, 30, 0.7);
       border: 1px solid var(--border-light);
@@ -57,6 +64,7 @@
       text-align: center;
       margin: 20px 0;
     }
+
     .token-big {
       font-family: var(--font-serif);
       font-size: 56px;
@@ -65,6 +73,7 @@
       color: var(--accent-orange);
       text-shadow: 0 0 20px rgba(224, 131, 58, 0.35);
     }
+
     .live-clock {
       font-family: var(--font-serif);
       font-size: 22px;
@@ -73,6 +82,7 @@
       font-variant-numeric: tabular-nums;
       letter-spacing: 1px;
     }
+
     .tag-live {
       display: inline-block;
       font-size: 11px;
@@ -82,16 +92,19 @@
       padding: 4px 10px;
       border-radius: 2px;
     }
+
     .tag-live.ready {
       background: rgba(16, 185, 129, 0.15);
       color: #34d399;
       border: 1px solid rgba(16, 185, 129, 0.4);
     }
+
     .tag-live.busy {
       background: var(--accent-orange-dim);
       color: var(--accent-orange);
       border: 1px solid var(--accent-orange);
     }
+
     .tag-live.away {
       background: rgba(239, 68, 68, 0.15);
       color: #f87171;
@@ -99,15 +112,18 @@
     }
   </style>
 </head>
+
 <body>
 
   <!-- Top Display Bar (Besloor Style) -->
   <header class="display-header">
     <div class="display-title">
-      <span style="font-family: var(--font-display); font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: 2px;">
+      <span
+        style="font-family: var(--font-display); font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: 2px;">
         WAITWISE<span style="color:var(--accent-orange);">.</span>
       </span>
-      <span style="font-size: 12px; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 2px; font-weight: 700;">
+      <span
+        style="font-size: 12px; color: var(--accent-orange); text-transform: uppercase; letter-spacing: 2px; font-weight: 700;">
         Outpatient Live Waiting Board
       </span>
     </div>
@@ -118,11 +134,6 @@
       </a>
     </div>
   </header>
-
-  <!-- Emergency Reminder Banner -->
-  <div class="notice-banner" style="margin: 0; border-radius: 0; border-left: none; border-right: none; text-align: center; justify-content: center;">
-    <span>🚨 <strong>Strictly Outpatient (OP) Consultations.</strong> Enter consultation room ONLY when your token number appears below. For emergency care, report directly to the <strong>Hospital Emergency &amp; Trauma Ward</strong>.</span>
-  </div>
 
   <!-- Main 4-Doctor Rooms Display Grid -->
   <main class="display-grid" id="displayGrid">
@@ -161,7 +172,30 @@
           return;
         }
 
-        grid.innerHTML = data.doctors.map((d, index) => {
+        // If a logged-in patient visits, filter to show only their booked doctor(s)
+        let doctorsToShow = data.doctors;
+        if (typeof Auth !== 'undefined' && Auth.isAuth && Auth.role === 'patient') {
+          try {
+            const aptRes = await api('GET', '/api/patient/appointments');
+            const appointments = aptRes.appointments || [];
+            // Active appointments = waiting or in-consultation
+            const activeDoctorIds = new Set(
+              appointments
+                .filter(a => a.status === 'waiting' || a.status === 'in-consultation')
+                .map(a => a.doctor && String(a.doctor._id))
+                .filter(Boolean)
+            );
+            if (activeDoctorIds.size > 0) {
+              const filtered = data.doctors.filter(d => activeDoctorIds.has(String(d.id)));
+              doctorsToShow = filtered.length > 0 ? filtered : data.doctors;
+            }
+          } catch (e) {
+            // If fetch fails, fall back to showing all doctors
+            console.warn('Could not fetch patient appointments for display filter:', e);
+          }
+        }
+
+        grid.innerHTML = doctorsToShow.map((d, index) => {
           const isUnavail = !d.isAvailable;
           const hasInRoom = d.currentToken !== null;
 
@@ -220,4 +254,5 @@
     fetchDisplayData();
   </script>
 </body>
+
 </html>

@@ -1,9 +1,9 @@
 const CLINIC_SPECIALIZATION = 'General Psychiatry';
 const CONSULTATION_MINUTES = 60;
 const MAX_DOCTORS = 2;
-const CLINIC_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const CLINIC_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CLINIC_TIME_ZONE = 'Asia/Kolkata';
-const BOOKING_DAYS_AHEAD = 3;
+const BOOKING_DAYS_AHEAD = 1;
 const BOOKING_WINDOW_DAYS = 3;
 const DEFAULT_BOOKING_PRIORITIES = {
   'dr.patel@waitwise.com': 1,
@@ -54,13 +54,21 @@ function addDaysToDateKey(dateKey, days) {
   ].join('-');
 }
 
+function isSunday(dateKey) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  // Date.UTC gives day-of-week: 0=Sun
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay() === 0;
+}
+
 function getBookingWindow(now = new Date()) {
   const dates = [];
-  let date = addDaysToDateKey(getClinicDateKey(now), BOOKING_DAYS_AHEAD);
+  let offset = 0;
   while (dates.length < BOOKING_WINDOW_DAYS) {
-    const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
-    if (dayOfWeek !== 0) dates.push(date);
-    date = addDaysToDateKey(date, 1);
+    const candidate = addDaysToDateKey(getClinicDateKey(now), BOOKING_DAYS_AHEAD + offset);
+    if (!isSunday(candidate)) {
+      dates.push(candidate);
+    }
+    offset += 1;
   }
   return { minDate: dates[0], maxDate: dates[dates.length - 1], dates };
 }
@@ -90,6 +98,15 @@ function isPastClinicSlot(date, slot, now = new Date()) {
   return currentMinute >= startHour * 60 + startMinute;
 }
 
+function getDaySessions(doctor, dayName) {
+  const schedule = (doctor.availableSlots || []).find(item => item.day === dayName);
+  if (!schedule) return SESSION_SLOTS;
+  if (Array.isArray(schedule.sessions)) return schedule.sessions;
+
+  // Keep the new fixed-session API usable during rolling upgrades from legacy schedules.
+  return SESSION_SLOTS;
+}
+
 function getDoctorBookingPriority(doctor) {
   const priority = Number(doctor.bookingPriority);
   if (Number.isInteger(priority) && priority > 0) return priority;
@@ -107,9 +124,11 @@ module.exports = {
   SESSION_SLOTS,
   SPECIAL_CASE_SLOTS,
   buildAvailableSlots,
+  getDaySessions,
   getClinicDateKey,
   getBookingWindow,
   isBookableDate,
   isPastClinicSlot,
-  getDoctorBookingPriority
+  getDoctorBookingPriority,
+  isSunday
 };

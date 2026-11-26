@@ -5,6 +5,7 @@ const { requirePatient } = require('../middleware/auth');
 const { parseAppointmentDate, getDayRange, getDayName } = require('../utils/dateHelper');
 const {
   SESSION_SLOTS,
+  getDaySessions,
   isPastClinicSlot,
   CONSULTATION_MINUTES,
   getDoctorBookingPriority,
@@ -90,20 +91,11 @@ router.post('/feedback', requirePatient(), async (req, res) => {
   }
 });
 
-function getDaySessions(doctor, dayName) {
-  const schedule = (doctor.availableSlots || []).find(item => item.day === dayName);
-  if (!schedule) return [];
-  if (Array.isArray(schedule.sessions)) return schedule.sessions;
-
-  // Keep the new fixed-session API usable during rolling upgrades from legacy schedules.
-  return SESSION_SLOTS;
-}
-
 async function getAvailableDoctorSlots(doctor, date) {
   const sessions = getDaySessions(doctor, getDayName(date));
   const allSlots = sessions.flatMap(session => session.slots);
   if (!allSlots.length) {
-    return { sessions, allSlots, bookedSlots: [], availableSlots: [], fullyBooked: false };
+    return { sessions, allSlots, bookedSlots: [], availableSlots: [], fullyBooked: false, sessionBookedMap: {} };
   }
 
   const { start, end } = getDayRange(date);
@@ -118,7 +110,15 @@ async function getAvailableDoctorSlots(doctor, date) {
     !bookedSlots.includes(slot) && !isPastClinicSlot(date, slot)
   );
   const fullyBooked = allSlots.every(slot => bookedSlots.includes(slot));
-  return { sessions, allSlots, bookedSlots, availableSlots, fullyBooked };
+
+  // Build per-session fully-booked map (session code -> bool)
+  const sessionBookedMap = {};
+  for (const session of sessions) {
+    sessionBookedMap[session.code] = session.slots.length > 0 &&
+      session.slots.every(slot => bookedSlots.includes(slot));
+  }
+
+  return { sessions, allSlots, bookedSlots, availableSlots, fullyBooked, sessionBookedMap };
 }
 
 async function getAvailabilityMessage(doctor, selectedDate) {
@@ -156,21 +156,72 @@ async function getDoctorsWithBookingAvailability(date) {
     String(a._id).localeCompare(String(b._id))
   );
 
-  let previousDoctorsFull = true;
+  // Collect slot data for every doctor first
+  const slotDataByDoc = [];
   for (const doctor of doctors) {
-    const { availableSlots, fullyBooked } = await getAvailableDoctorSlots(doctor, date);
-    doctor.availableSlotsCount = availableSlots.length;
-    doctor.bookingFullyBooked = fullyBooked;
-    doctor.bookingEnabled = previousDoctorsFull && doctor.isAvailable && availableSlots.length > 0;
-    doctor.bookingBlockReason = !previousDoctorsFull
-      ? 'Appointments with the primary doctor must be filled first.'
-      : !doctor.isAvailable
+    const data = await getAvailableDoctorSlots(doctor, date);
+    slotDataByDoc.push(data);
+  }
+
+  // Session-wise cascading unlock:
+  // For each doctor (after the first), each session is only enabled
+  // when ALL higher-priority doctors have that same session fully booked.
+  // The first (priority-1) doctor is always open if available.
+  for (let i = 0; i < doctors.length; i++) {
+    const doctor = doctors[i];
+    const { availableSlots, fullyBooked, sessionBookedMap } = slotDataByDoc[i];
+
+    if (i === 0) {
+      // Primary doctor: always enabled when available and has slots
+      doctor.availableSlotsCount = availableSlots.length;
+      doctor.bookingFullyBooked = fullyBooked;
+      doctor.bookingEnabled = doctor.isAvailable && availableSlots.length > 0;
+      doctor.bookingBlockReason = !doctor.isAvailable
         ? 'Doctor is currently unavailable.'
         : availableSlots.length === 0
           ? await getAvailabilityMessage(doctor, date)
           : '';
-    previousDoctorsFull = previousDoctorsFull && fullyBooked;
+      doctor._sessionBookedMap = sessionBookedMap;
+    } else {
+      // Secondary+ doctors: open only session-by-session once all prior doctors
+      // have that session fully booked.
+      // Build a merged "are all previous doctors' session X full?" map.
+      const prevSessionsFull = {}; // sessionCode -> bool
+      const { sessions } = slotDataByDoc[i];
+      for (const session of sessions) {
+        prevSessionsFull[session.code] = doctors.slice(0, i).every(prevDoc => {
+          const prevMap = prevDoc._sessionBookedMap || {};
+          // If the previous doctor has no slots for this session treat it as full
+          return prevMap[session.code] !== false;
+        });
+      }
+
+      // Available slots for this doctor filtered to open sessions only
+      const { sessions: mySessions, bookedSlots } = slotDataByDoc[i];
+      const openSessionSlots = mySessions.flatMap(session =>
+        prevSessionsFull[session.code]
+          ? session.slots.filter(slot => !bookedSlots.includes(slot) && !isPastClinicSlot(date, slot))
+          : []
+      );
+
+      const anySessionOpen = mySessions.some(s => prevSessionsFull[s.code]);
+
+      doctor.availableSlotsCount = openSessionSlots.length;
+      doctor.bookingFullyBooked = fullyBooked;
+      doctor.bookingEnabled = doctor.isAvailable && openSessionSlots.length > 0;
+      doctor.bookingBlockReason = !doctor.isAvailable
+        ? 'Doctor is currently unavailable.'
+        : !anySessionOpen
+          ? 'Appointments with the primary doctor must be filled session-by-session first.'
+          : openSessionSlots.length === 0
+            ? await getAvailabilityMessage(doctor, date)
+            : '';
+      doctor._sessionBookedMap = sessionBookedMap;
+      // Override availableSlots for downstream slot-filter use
+      doctor._openSessionSlots = new Set(openSessionSlots);
+    }
   }
+
   return doctors;
 }
 
@@ -336,7 +387,7 @@ router.get('/doctors/:doctorId/slots', requirePatient(), async (req, res) => {
     }
 
     const { sessions, allSlots, bookedSlots, availableSlots } = await getAvailableDoctorSlots(doctor, date);
-    const availableSet = new Set(availableSlots);
+    const availableSet = bookingDoctor._openSessionSlots || new Set(availableSlots);
     const availableSessions = sessions.map(session => ({
       code: session.code,
       slots: session.slots.filter(slot => availableSet.has(slot))

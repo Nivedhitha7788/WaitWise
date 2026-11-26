@@ -931,10 +931,22 @@ function isAppointmentToday(appointmentDate) {
 }
 
 function statusBadge(status, appointmentDate) {
-  const displayStatus = status === 'waiting' && appointmentDate &&
-    clinicDateKey(new Date(appointmentDate)) > clinicDateKey()
-    ? 'scheduled'
-    : status;
+  let displayStatus = status;
+  if (appointmentDate) {
+    const aptDay = clinicDateKey(new Date(appointmentDate));
+    const today = clinicDateKey();
+    if (aptDay < today) {
+      // Past day: only completed or cancelled
+      displayStatus = (status === 'completed') ? 'completed' : 'cancelled';
+    } else if (aptDay > today) {
+      // Future day: scheduled or cancelled
+      displayStatus = (status === 'cancelled') ? 'cancelled' : 'scheduled';
+    } else {
+      // Today: waiting, in-consultation, completed, cancelled
+      displayStatus = status;
+    }
+  }
+
   const map = {
     waiting: 'waiting',
     scheduled: 'waiting',
@@ -954,5 +966,10 @@ function statusBadge(status, appointmentDate) {
 
 function fmtDate(d) {
   if (!d) return 'N/A';
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    const [year, month, day] = d.split('-').map(Number);
+    const dateObj = new Date(year, month - 1, day);
+    return dateObj.toLocaleDateString(I18n.locale, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
   return new Date(d).toLocaleDateString(I18n.locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }

@@ -343,7 +343,10 @@ router.get('/appointments', requireAdmin(), async (req, res) => {
 
     const apts = await findAppointmentsAcrossDoctors(filter);
     apts.sort((a, b) =>
-      new Date(b.appointmentDate) - new Date(a.appointmentDate) || a.tokenNumber - b.tokenNumber
+      new Date(a.appointmentDate) - new Date(b.appointmentDate) ||
+      (a.session || '').localeCompare(b.session || '') ||
+      (a.slot || '').localeCompare(b.slot || '') ||
+      a.tokenNumber - b.tokenNumber
     );
 
     const enriched = await Promise.all(apts.map(async a => {

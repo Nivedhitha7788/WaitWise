@@ -20,9 +20,17 @@
           <div class="orange-bar-left"></div>
           <p style="font-size:14px; color:var(--text-muted); margin-top:2px;">Overall view of WaitWise outpatient system, doctors &amp; appointments</p>
         </div>
-        <div style="display:flex; gap:10px;">
-          <button class="btn btn-outline btn-sm" id="seedBtn" title="Ensure database has admin and 2 psychiatry doctors">🌱 Verify System Setup</button>
-          <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 Refresh Dashboard</button>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+          <!-- Live IST Date & Time Clock -->
+          <div style="display:flex; align-items:center; gap:8px; background:rgba(224,131,58,0.12); border:1px solid rgba(224,131,58,0.3); padding:6px 14px; border-radius:3px;">
+            <span style="font-size:14px;">🕒</span>
+            <span style="font-size:11px; font-weight:700; color:var(--accent-orange); letter-spacing:1px; text-transform:uppercase;">Live IST:</span>
+            <span id="liveClock" style="font-size:13px; font-weight:700; color:#ffffff; font-family:monospace;">--:--:--</span>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-outline btn-sm" id="seedBtn" title="Ensure database has admin and 2 psychiatry doctors">🌱 Verify System Setup</button>
+            <button class="btn btn-outline btn-sm" id="refreshBtn">🔄 Refresh Dashboard</button>
+          </div>
         </div>
       </div>
 
@@ -196,14 +204,92 @@
           </form>
         </div>
         <div class="card">
-          <div class="section-header">
+          <div class="section-header" style="flex-wrap:wrap; gap:14px; align-items:center;">
             <div>
-              <h2 class="section-title">All OP Patient Appointments &amp; Tokens</h2>
+              <h2 class="section-title">OP Patient Appointments &amp; Tokens</h2>
               <div class="orange-bar-left"></div>
               <p class="section-subtitle">Real-time appointments directory across both clinic doctors</p>
             </div>
-            <button class="btn btn-outline btn-sm" id="aptRefreshBtn">🔄 Refresh Queue</button>
+            <!-- Date Filter Button & Controls with Sunday Skip -->
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <!-- Calendar Popup Toggle -->
+              <div style="position:relative; display:inline-block;">
+                <button type="button" id="adminCalToggleBtn" style="
+                  display:flex; align-items:center; gap:8px;
+                  padding:7px 14px; border-radius:3px;
+                  border:1px solid var(--border-light);
+                  background:rgba(255,255,255,0.04);
+                  color:#ffffff; font-size:13px; font-weight:600;
+                  cursor:pointer; transition:border-color .15s, background .15s;
+                  min-width:180px;
+                ">
+                  <span style="font-size:14px;">📅</span>
+                  <span id="adminCalLabel">All Dates</span>
+                  <span style="margin-left:auto; color:var(--accent-orange); font-size:10px;">▼</span>
+                </button>
+
+                <!-- Calendar dropdown popup -->
+                <div id="adminBookingCalendar" style="
+                  display:none;
+                  position:absolute; top:calc(100% + 6px); left:0; z-index:200;
+                  background:#0d1b2a; border:1px solid var(--accent-orange);
+                  border-radius:4px; overflow:hidden; min-width:280px;
+                  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+                  font-size:13px;
+                ">
+                  <!-- calendar header -->
+                  <div style="
+                    display:flex; align-items:center; justify-content:space-between;
+                    padding:8px 12px;
+                    background:rgba(224,131,58,0.14);
+                    border-bottom:1px solid rgba(224,131,58,0.25);
+                  ">
+                    <button type="button" id="adminCalPrev" style="
+                      background:none; border:none; color:var(--accent-orange);
+                      font-size:18px; cursor:pointer; padding:0 8px; line-height:1;
+                    ">‹</button>
+                    <span id="adminCalMonthLabel" style="
+                      font-weight:700; color:#ffffff; letter-spacing:1px; font-size:12px;
+                    "></span>
+                    <button type="button" id="adminCalNext" style="
+                      background:none; border:none; color:var(--accent-orange);
+                      font-size:18px; cursor:pointer; padding:0 8px; line-height:1;
+                    ">›</button>
+                  </div>
+                  <!-- day-of-week headers -->
+                  <div style="
+                    display:grid; grid-template-columns:repeat(7,1fr);
+                    padding:6px 8px 2px; gap:2px;
+                    border-bottom:1px solid rgba(255,255,255,0.05);
+                  ">
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:#f87171;">Su</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Mo</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Tu</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">We</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Th</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Fr</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Sa</span>
+                  </div>
+                  <!-- day grid injected by JS -->
+                  <div id="adminCalGrid" style="
+                    display:grid; grid-template-columns:repeat(7,1fr);
+                    padding:6px 8px 10px; gap:3px;
+                  "></div>
+                  <div style="padding:6px 8px 8px; font-size:10.5px; color:var(--text-muted); text-align:center; border-top:1px solid rgba(255,255,255,0.05);">
+                    🔴 Sundays — Clinic closed (Skipped)
+                  </div>
+                </div>
+              </div>
+
+              <!-- Quick Prev / Next Day (skipping Sundays) -->
+              <button class="btn btn-outline btn-sm" id="prevDayBtn" type="button" title="Previous working day (skips Sunday)">‹ Prev Day</button>
+              <button class="btn btn-outline-orange btn-sm" id="showTodayBtn" type="button">Today</button>
+              <button class="btn btn-outline btn-sm" id="nextDayBtn" type="button" title="Next working day (skips Sunday)">Next Day ›</button>
+              <button class="btn btn-outline btn-sm" id="showAllDatesBtn" type="button">All Dates</button>
+              <button class="btn btn-outline btn-sm" id="aptRefreshBtn">🔄 Refresh</button>
+            </div>
           </div>
+          <div id="filterStatusLabel" style="font-size:12px; color:var(--text-muted); margin-bottom:12px;"></div>
           <div id="appointmentsWrap">
             <p style="color:#94a3b8; text-align:center; padding:20px 0;">Loading appointments...</p>
           </div>
@@ -412,16 +498,40 @@
       if (!appointmentDate) return status;
       const appointmentDay = clinicDateKey(new Date(appointmentDate));
       const today = clinicDateKey();
-      if (appointmentDay === today) return status;
-      if (status === 'waiting') return 'cancelled';
-      if (status === 'in-consultation') return 'completed';
+      if (appointmentDay < today) {
+        // Previous day: completed or cancelled
+        return (status === 'completed') ? 'completed' : 'cancelled';
+      }
+      if (appointmentDay > today) {
+        // Later appointments (tomorrow and others): scheduled or cancelled
+        return (status === 'cancelled') ? 'cancelled' : 'scheduled';
+      }
+      // Today: waiting, in-consultation, completed, cancelled
       return status;
     }
 
+    let selectedFilterDate = '';
+
     async function loadAppointments() {
       try {
-        const { appointments } = await api('GET', '/api/admin/appointments');
+        const queryUrl = selectedFilterDate
+          ? `/api/admin/appointments?date=${encodeURIComponent(selectedFilterDate)}`
+          : '/api/admin/appointments';
+        const { appointments } = await api('GET', queryUrl);
         const wrap = $('#appointmentsWrap');
+        const filterLabel = $('#filterStatusLabel');
+        const todayKey = clinicDateKey();
+
+        if (filterLabel) {
+          if (selectedFilterDate) {
+            const isToday = selectedFilterDate === todayKey;
+            const isPast = selectedFilterDate < todayKey;
+            const tag = isToday ? ' (Today)' : isPast ? ' (Past Date)' : ' (Upcoming)';
+            filterLabel.innerHTML = `Showing appointments for: <b style="color:var(--accent-orange);">${fmtDate(selectedFilterDate)}</b>${tag} &bull; <b>${appointments.length}</b> total`;
+          } else {
+            filterLabel.innerHTML = `Showing: <b style="color:#ffffff;">All Dates</b> &bull; <b>${appointments.length}</b> total appointments`;
+          }
+        }
         const patientCancellations = appointments.filter(a =>
           a.status === 'cancelled' && a.cancelledBy === 'patient'
         );
@@ -545,6 +655,216 @@
         button.disabled = false;
       }
     };
+
+    // Live IST Clock
+    function updateLiveClock() {
+      const clockEl = $('#liveClock');
+      if (!clockEl) return;
+      const now = new Date();
+      const options = {
+        timeZone: 'Asia/Kolkata',
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      };
+      clockEl.textContent = new Intl.DateTimeFormat('en-IN', options).format(now);
+    }
+    updateLiveClock();
+    setInterval(updateLiveClock, 1000);
+
+    // Date Helper Functions & Sunday Skipping Logic
+    function isSundayDate(dateKey) {
+      if (!dateKey) return false;
+      const [y, m, d] = dateKey.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0;
+    }
+
+    function addDaysToKey(dateKey, n) {
+      const [y, m, d] = dateKey.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d + n));
+      return [
+        dt.getUTCFullYear(),
+        String(dt.getUTCMonth() + 1).padStart(2, '0'),
+        String(dt.getUTCDate()).padStart(2, '0')
+      ].join('-');
+    }
+
+    function getNextWorkingDay(dateKey) {
+      let next = addDaysToKey(dateKey, 1);
+      if (isSundayDate(next)) next = addDaysToKey(next, 1); // skip Sunday to Monday
+      return next;
+    }
+
+    function getPrevWorkingDay(dateKey) {
+      let prev = addDaysToKey(dateKey, -1);
+      if (isSundayDate(prev)) prev = addDaysToKey(prev, -1); // skip Sunday to Saturday
+      return prev;
+    }
+
+    // Admin Calendar Popup & Filter Controls
+    const todayClinicDate = clinicDateKey();
+    let adminCalViewYear = Number(todayClinicDate.slice(0, 4));
+    let adminCalViewMonth = Number(todayClinicDate.slice(5, 7)) - 1;
+    let adminCalOpen = false;
+
+    function updateFilterDate(dateKey) {
+      if (dateKey && isSundayDate(dateKey)) {
+        // Auto-skip Sunday to Monday
+        dateKey = getNextWorkingDay(dateKey);
+      }
+      selectedFilterDate = dateKey;
+      const label = $('#adminCalLabel');
+      if (label) {
+        label.textContent = selectedFilterDate ? fmtDate(selectedFilterDate) : 'All Dates';
+      }
+      renderAdminCalendar();
+      loadAppointments();
+    }
+
+    function openAdminCalendar() {
+      adminCalOpen = true;
+      $('#adminBookingCalendar').style.display = 'block';
+      const arrow = $('#adminCalToggleBtn').querySelector('span:last-child');
+      if (arrow) arrow.textContent = '▲';
+      renderAdminCalendar();
+    }
+
+    function closeAdminCalendar() {
+      adminCalOpen = false;
+      $('#adminBookingCalendar').style.display = 'none';
+      const arrow = $('#adminCalToggleBtn').querySelector('span:last-child');
+      if (arrow) arrow.textContent = '▼';
+    }
+
+    $('#adminCalToggleBtn').onclick = (e) => {
+      e.stopPropagation();
+      adminCalOpen ? closeAdminCalendar() : openAdminCalendar();
+    };
+
+    document.addEventListener('click', (e) => {
+      const cal = $('#adminBookingCalendar');
+      const btn = $('#adminCalToggleBtn');
+      if (cal && !cal.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+        closeAdminCalendar();
+      }
+    });
+
+    function renderAdminCalendar() {
+      const monthNames = ['January','February','March','April','May','June',
+                          'July','August','September','October','November','December'];
+      const monthLabel = $('#adminCalMonthLabel');
+      if (monthLabel) monthLabel.textContent = `${monthNames[adminCalViewMonth]} ${adminCalViewYear}`;
+
+      const firstDay = new Date(Date.UTC(adminCalViewYear, adminCalViewMonth, 1)).getUTCDay();
+      const daysInMonth = new Date(Date.UTC(adminCalViewYear, adminCalViewMonth + 1, 0)).getUTCDate();
+
+      let html = '';
+      for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateKey = `${adminCalViewYear}-${String(adminCalViewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const isSunday = new Date(Date.UTC(adminCalViewYear, adminCalViewMonth, d)).getUTCDay() === 0;
+        const isSelected = selectedFilterDate === dateKey;
+        const isToday = todayClinicDate === dateKey;
+
+        if (isSunday) {
+          // Sunday is explicitly disabled and skipped
+          html += `<button type="button" disabled title="Sunday – Clinic closed (Skipped)"
+            style="
+              width:100%; aspect-ratio:1; border-radius:3px; border:none; font-size:11px;
+              font-weight:400; cursor:not-allowed; background:transparent;
+              color:rgba(239,68,68,0.35); text-decoration:line-through;
+            ">${d}</button>`;
+        } else {
+          html += `<button type="button"
+            data-date="${dateKey}"
+            title="${isToday ? 'Today' : ''}"
+            style="
+              width:100%; aspect-ratio:1; border-radius:3px; border:none; font-size:11px;
+              font-weight:${isSelected ? '700' : '500'};
+              cursor:pointer;
+              background:${isSelected ? 'var(--accent-orange)' : isToday ? 'rgba(224,131,58,0.2)' : 'rgba(255,255,255,0.04)'};
+              color:${isSelected ? '#ffffff' : isToday ? 'var(--accent-orange)' : '#e2e8f0'};
+              outline:${isSelected ? '2px solid var(--accent-orange)' : isToday ? '1px solid rgba(224,131,58,0.5)' : 'none'};
+              transition:background .15s;
+            ">${d}</button>`;
+        }
+      }
+      const grid = $('#adminCalGrid');
+      if (grid) {
+        grid.innerHTML = html;
+        grid.querySelectorAll('button[data-date]').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            closeAdminCalendar();
+            updateFilterDate(btn.dataset.date);
+          };
+        });
+      }
+    }
+
+    $('#adminCalPrev').onclick = (e) => {
+      e.stopPropagation();
+      adminCalViewMonth--;
+      if (adminCalViewMonth < 0) { adminCalViewMonth = 11; adminCalViewYear--; }
+      renderAdminCalendar();
+    };
+
+    $('#adminCalNext').onclick = (e) => {
+      e.stopPropagation();
+      adminCalViewMonth++;
+      if (adminCalViewMonth > 11) { adminCalViewMonth = 0; adminCalViewYear++; }
+      renderAdminCalendar();
+    };
+
+    // Quick Day Navigation Buttons (skipping Sundays)
+    const prevDayBtn = $('#prevDayBtn');
+    const nextDayBtn = $('#nextDayBtn');
+    const showTodayBtn = $('#showTodayBtn');
+    const showAllDatesBtn = $('#showAllDatesBtn');
+
+    if (prevDayBtn) {
+      prevDayBtn.onclick = () => {
+        const baseDate = selectedFilterDate || todayClinicDate;
+        updateFilterDate(getPrevWorkingDay(baseDate));
+      };
+    }
+
+    if (nextDayBtn) {
+      nextDayBtn.onclick = () => {
+        const baseDate = selectedFilterDate || todayClinicDate;
+        updateFilterDate(getNextWorkingDay(baseDate));
+      };
+    }
+
+    if (showTodayBtn) {
+      showTodayBtn.onclick = () => {
+        const target = isSundayDate(todayClinicDate) ? getNextWorkingDay(todayClinicDate) : todayClinicDate;
+        updateFilterDate(target);
+      };
+    }
+
+    if (showAllDatesBtn) {
+      showAllDatesBtn.onclick = () => {
+        closeAdminCalendar();
+        updateFilterDate('');
+      };
+    }
+
+    if (specialDate) {
+      specialDate.onchange = (e) => {
+        if (isSundayDate(e.target.value)) {
+          alert('Sundays are clinic holidays. Auto-advancing special case appointment to Monday.');
+          e.target.value = getNextWorkingDay(e.target.value);
+        }
+      };
+    }
+
+    renderAdminCalendar();
 
     loadStats();
     loadDoctors();

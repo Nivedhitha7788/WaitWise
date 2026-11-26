@@ -41,9 +41,6 @@
         <div class="card">
           <div class="section-title" style="margin-bottom:6px;">Reserve OP Consultation &amp; Generate Token</div>
           <div class="orange-bar-left"></div>
-          <div class="alert alert-info" style="font-size:12px;">
-            Special cases must physically enquire at the hospital. Online booking is not available for special cases; the administrator may allot a 5:00–6:00 PM or 6:00–7:00 PM slot.
-          </div>
           <div id="bookAlert"></div>
           <form id="bookForm">
             <div class="form-group">
@@ -56,9 +53,79 @@
             <!-- Doctor availability preview -->
             <div id="doctorInfo" style="display:none; background:rgba(16, 185, 129, 0.1); border:1px solid rgba(16, 185, 129, 0.3); border-radius:2px; padding:14px 18px; margin-bottom:20px; font-size:13.5px;"></div>
 
-            <div class="form-group" id="dateSection" style="display:none;">
+            <div class="form-group" id="dateSection">
               <label class="form-label">Select Consultation Date <span class="req">*</span></label>
-              <select class="form-select" id="dateInput" disabled style="max-width:240px;"></select>
+              <!-- Hidden input holds the selected YYYY-MM-DD value -->
+              <input type="hidden" id="dateInput" />
+
+              <!-- Date picker trigger button -->
+              <div style="position:relative; display:inline-block;">
+                <button type="button" id="calToggleBtn" style="
+                  display:flex; align-items:center; gap:10px;
+                  padding:11px 20px; border-radius:3px;
+                  border:1px solid var(--border-light);
+                  background:rgba(255,255,255,0.04);
+                  color:#ffffff; font-size:13px; font-weight:600;
+                  cursor:pointer; transition:border-color .15s, background .15s;
+                  min-width:220px;
+                ">
+                  <span style="font-size:16px;">📅</span>
+                  <span id="calToggleBtnLabel">Select a date</span>
+                  <span style="margin-left:auto; color:var(--accent-orange); font-size:11px;">▼</span>
+                </button>
+
+                <!-- Calendar dropdown popup -->
+                <div id="bookingCalendar" style="
+                  display:none;
+                  position:absolute; top:calc(100% + 6px); left:0; z-index:200;
+                  background:#0d1b2a; border:1px solid var(--accent-orange);
+                  border-radius:4px; overflow:hidden; min-width:290px;
+                  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+                  font-size:13px;
+                ">
+                  <!-- calendar header -->
+                  <div style="
+                    display:flex; align-items:center; justify-content:space-between;
+                    padding:10px 16px;
+                    background:rgba(224,131,58,0.14);
+                    border-bottom:1px solid rgba(224,131,58,0.25);
+                  ">
+                    <button type="button" id="calPrev" style="
+                      background:none; border:none; color:var(--accent-orange);
+                      font-size:20px; cursor:pointer; padding:0 8px; line-height:1;
+                    ">‹</button>
+                    <span id="calMonthLabel" style="
+                      font-weight:700; color:#ffffff; letter-spacing:1px; font-size:13px;
+                    "></span>
+                    <button type="button" id="calNext" style="
+                      background:none; border:none; color:var(--accent-orange);
+                      font-size:20px; cursor:pointer; padding:0 8px; line-height:1;
+                    ">›</button>
+                  </div>
+                  <!-- day-of-week headers -->
+                  <div style="
+                    display:grid; grid-template-columns:repeat(7,1fr);
+                    padding:8px 10px 4px; gap:2px;
+                    border-bottom:1px solid rgba(255,255,255,0.05);
+                  ">
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Su</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Mo</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Tu</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">We</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Th</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Fr</span>
+                    <span style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);">Sa</span>
+                  </div>
+                  <!-- day grid injected by JS -->
+                  <div id="calGrid" style="
+                    display:grid; grid-template-columns:repeat(7,1fr);
+                    padding:6px 10px 12px; gap:4px;
+                  "></div>
+                  <div style="padding:0 10px 10px; font-size:11px; color:var(--text-muted); text-align:center;">
+                    🟠 Highlighted dates are open for booking &nbsp;|&nbsp; 🔴 Sundays — Clinic closed
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="form-group" id="slotsSection" style="display:none;">
@@ -72,6 +139,11 @@
             <button type="submit" class="btn btn-orange" id="bookBtn" disabled style="margin-top:14px; font-size:13px; padding:13px 32px;">
               🎟️ Generate OP Digital Token &rarr;
             </button>
+
+            <!-- Special case placeholder -->
+            <p style="margin-top:12px; font-size:12px; color:var(--text-muted); font-style:italic; border-left:2px solid rgba(224,131,58,0.4); padding-left:10px;">
+              🏥 <b style="color:rgba(224,131,58,0.8);">Special cases</b> (5:00–7:00 PM walk-in slots) are allotted only by the Hospital Admin at the reception. Please enquire in person.
+            </p>
           </form>
         </div>
       </div>
@@ -303,23 +375,127 @@
       ].join('-');
     }
 
-    const bookingDates = [];
-    let nextBookingDate = addDaysToDateKey(getClinicDateKey(), 3);
-    while (bookingDates.length < 3) {
-      const dayOfWeek = new Date(`${nextBookingDate}T00:00:00Z`).getUTCDay();
-      if (dayOfWeek !== 0) bookingDates.push(nextBookingDate);
-      nextBookingDate = addDaysToDateKey(nextBookingDate, 1);
+    // ── Booking window: Opening on any date D allows booking for [D+1, D+2, D+3] skipping Sundays ──
+    function isSundayKey(dateKey) {
+      const [y, m, d] = dateKey.split('-').map(Number);
+      return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0;
     }
-    const firstBookingDate = bookingDates[0];
-    $('#dateInput').innerHTML = bookingDates
-      .map(date => `<option value="${date}">${fmtDate(date)}</option>`)
-      .join('');
+    let bookingDates = (function() {
+      const result = [];
+      let offset = 1;
+      while (result.length < 3) {
+        const candidate = addDaysToDateKey(getClinicDateKey(), offset);
+        if (!isSundayKey(candidate)) result.push(candidate);
+        offset++;
+      }
+      return result;
+    })();
+    let firstBookingDate = bookingDates[0];
+    // Start calendar with the month of the first bookable date
+    let calViewYear  = Number(firstBookingDate.slice(0,4));
+    let calViewMonth = Number(firstBookingDate.slice(5,7)) - 1; // 0-based
+
+    // ── Calendar popup toggle ────────────────────────────────────────────────
+    let calOpen = false;
+
+    function openCalendar() {
+      calOpen = true;
+      $('#bookingCalendar').style.display = 'block';
+      $('#calToggleBtn').querySelector('span:last-child').textContent = '▲';
+      renderCalendar();
+    }
+
+    function closeCalendar() {
+      calOpen = false;
+      $('#bookingCalendar').style.display = 'none';
+      $('#calToggleBtn').querySelector('span:last-child').textContent = '▼';
+    }
+
+    $('#calToggleBtn').onclick = (e) => {
+      e.stopPropagation();
+      calOpen ? closeCalendar() : openCalendar();
+    };
+
+    // Close when clicking outside the calendar
+    document.addEventListener('click', (e) => {
+      const cal = $('#bookingCalendar');
+      const btn = $('#calToggleBtn');
+      if (cal && !cal.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+        closeCalendar();
+      }
+    });
+
+    function renderCalendar() {
+      const monthNames = ['January','February','March','April','May','June',
+                          'July','August','September','October','November','December'];
+      $('#calMonthLabel').textContent = `${monthNames[calViewMonth]} ${calViewYear}`;
+
+      const firstDay = new Date(Date.UTC(calViewYear, calViewMonth, 1)).getUTCDay();
+      const daysInMonth = new Date(Date.UTC(calViewYear, calViewMonth + 1, 0)).getUTCDate();
+
+      let html = '';
+      for (let i = 0; i < firstDay; i++) html += `<div></div>`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateKey = `${calViewYear}-${String(calViewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const isSunday = new Date(Date.UTC(calViewYear, calViewMonth, d)).getUTCDay() === 0;
+        const isBookable = bookingDates.includes(dateKey);
+        const isSelected = $('#dateInput').value === dateKey;
+        const title = isSunday ? 'Sunday – Clinic closed' : '';
+        html += `<button type="button"
+          data-date="${dateKey}"
+          ${(isBookable && !isSunday) ? '' : 'disabled'}
+          title="${title}"
+          style="
+            width:100%; aspect-ratio:1; border-radius:3px; border:none; font-size:12px;
+            font-weight:${isBookable && !isSunday ? '700' : '400'};
+            cursor:${isBookable && !isSunday ? 'pointer' : 'default'};
+            background:${isSelected && !isSunday ? 'var(--accent-orange)' : isBookable && !isSunday ? 'rgba(224,131,58,0.18)' : 'transparent'};
+            color:${isSelected && !isSunday ? '#fff' : isBookable && !isSunday ? 'var(--accent-orange)' : isSunday ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.18)'};
+            outline:${isSelected && !isSunday ? '2px solid var(--accent-orange)' : 'none'};
+            transition:background .15s;
+            ${isSunday ? 'text-decoration:line-through;' : ''}
+          ">${d}</button>`;
+      }
+      $('#calGrid').innerHTML = html;
+
+      $$('#calGrid button[data-date]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          $('#dateInput').value = btn.dataset.date;
+          // Update the trigger button label
+          $('#calToggleBtnLabel').textContent = fmtDate(btn.dataset.date);
+          closeCalendar();
+          renderCalendar();
+          loadDoctors();
+        };
+      });
+    }
+
+    $('#calPrev').onclick = (e) => {
+      e.stopPropagation();
+      calViewMonth--;
+      if (calViewMonth < 0) { calViewMonth = 11; calViewYear--; }
+      renderCalendar();
+    };
+    $('#calNext').onclick = (e) => {
+      e.stopPropagation();
+      calViewMonth++;
+      if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
+      renderCalendar();
+    };
+
+    // Pre-select the first bookable date and label the button
     $('#dateInput').value = firstBookingDate;
+    $('#calToggleBtnLabel').textContent = fmtDate(firstBookingDate);
 
     async function loadDoctors() {
       try {
         const date = $('#dateInput').value || firstBookingDate;
         const res = await api('GET', `/api/patient/doctors/all?date=${encodeURIComponent(date)}`);
+        if (res.bookingWindow?.dates && Array.isArray(res.bookingWindow.dates) && res.bookingWindow.dates.length) {
+          bookingDates = res.bookingWindow.dates;
+          firstBookingDate = bookingDates[0];
+        }
         doctors = res.doctors || [];
         const sel = $('#doctorSelect');
         const currentSelection = sel.value;
@@ -335,22 +511,22 @@
           doctors.map(d => {
             const availability = !d.isAvailable
               ? `Unavailable${d.unavailabilityReason ? ` — ${d.unavailabilityReason}` : ''}`
-              : d.availableSlotsCount === 0
-                ? d.bookingFullyBooked ? 'Fully booked — check other dates' : 'No clinic sessions on this date'
-                : d.bookingEnabled
-                  ? `${d.availableSlotsCount} slots available`
-                  : 'Available after Priya is fully booked';
-            const canShowSuggestions = d.isAvailable && d.availableSlotsCount === 0 && Boolean(d.bookingBlockReason);
-            return `<option value="${escapeHTML(d._id)}" ${d.bookingEnabled || canShowSuggestions ? '' : 'disabled'}>${escapeHTML(d.name)} — ${escapeHTML(d.specialization)} [${escapeHTML(availability)}]</option>`;
+              : !d.bookingEnabled
+                ? 'Locked — Priya fills first'
+                : d.availableSlotsCount === 0
+                  ? d.bookingFullyBooked ? 'Fully booked — check other dates' : 'No clinic sessions on this date'
+                  : `${d.availableSlotsCount} slots available`;
+            const isSelectable = d.isAvailable && d.bookingEnabled && d.availableSlotsCount > 0;
+            return `<option value="${escapeHTML(d._id)}" ${isSelectable ? '' : 'disabled'} style="${isSelectable ? '' : 'color:#64748b; font-style:italic;'}">${escapeHTML(d.name)} — ${escapeHTML(d.specialization)} [${escapeHTML(availability)}]</option>`;
           }).join('');
         const selectedDoctor = doctors.find(d =>
-          String(d._id) === String(currentSelection) && d.bookingEnabled
-        ) || doctors.find(d => d.bookingEnabled) ||
-          doctors.find(d => d.isAvailable && d.availableSlotsCount === 0 && d.bookingBlockReason);
+          String(d._id) === String(currentSelection) && d.bookingEnabled && d.isAvailable && d.availableSlotsCount > 0
+        ) || doctors.find(d => d.bookingEnabled && d.isAvailable && d.availableSlotsCount > 0);
         sel.value = selectedDoctor ? String(selectedDoctor._id) : '';
         if (sel.value) {
           loadSlots();
         } else {
+          $('#doctorInfo').style.display = 'none';
           clearBookingOptions();
         }
       } catch (err) {
@@ -365,7 +541,6 @@
       selectedSlot = null;
       selectedSession = null;
       $('#selectedSlot').value = '';
-      $('#dateInput').disabled = false;
       $('#dateSection').style.display = '';
       $('#slotsSection').style.display = 'none';
       $('#slotsWrap').innerHTML = '';
@@ -404,9 +579,7 @@
       const info = $('#doctorInfo');
       info.style.display = '';
       if (!doc.bookingEnabled) {
-        info.style.background = 'rgba(245, 158, 11, 0.12)';
-        info.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-        info.textContent = doc.bookingBlockReason || 'This doctor is not accepting appointments for the selected date yet.';
+        info.style.display = 'none';
         clearBookingOptions();
         return;
       }
@@ -418,7 +591,6 @@
       info.style.background = 'rgba(16, 185, 129, 0.1)';
       info.style.borderColor = 'rgba(16, 185, 129, 0.3)';
       info.innerHTML = `🩺 <b>${doc.name}</b> &bull; ${doc.specialization} &bull; <b>${doc.consultationTime} min</b> consultation &bull; <span style="color:#10b981;font-weight:700;">Available</span>`;
-      $('#dateInput').disabled = false;
       $('#dateSection').style.display = '';
       if (!$('#dateInput').value) $('#dateInput').value = firstBookingDate;
       const date = $('#dateInput').value;
@@ -492,7 +664,10 @@
     }
 
     $('#doctorSelect').onchange = loadSlots;
-    $('#dateInput').onchange = loadDoctors;
+    // dateInput is now a hidden field — calendar buttons call loadDoctors directly
+
+    // Render calendar after bookingDates are ready
+    renderCalendar();
 
     $('#bookForm').onsubmit = async (e) => {
       e.preventDefault();

@@ -4,15 +4,20 @@ const assert = require('assert');
 const { getClinicDateKey, getBookingWindow, isBookableDate } = require('./backend/utils/clinicConfig');
 const { getDayRange } = require('./backend/utils/dateHelper');
 
-const fixedBookingWindow = getBookingWindow(new Date('2026-11-24T12:00:00+05:30'));
+const fixedBookingWindow = getBookingWindow(new Date('2026-11-26T12:00:00+05:30'));
+// 2026-11-29 is a Sunday → skipped; window should be [27, 28, 30]
 assert.deepStrictEqual(
   fixedBookingWindow.dates,
-  ['2026-11-27', '2026-11-28', '2026-11-29'],
-  'The booking window should start three days ahead and show exactly three dates.'
+  ['2026-11-27', '2026-11-28', '2026-11-30'],
+  'The booking window should start tomorrow, skip Sundays, and show the next three non-Sunday dates.'
 );
-assert.strictEqual(isBookableDate('2026-11-27', new Date('2026-11-24T12:00:00+05:30')), true);
-assert.strictEqual(isBookableDate('2026-11-24', new Date('2026-11-24T12:00:00+05:30')), false);
-assert.strictEqual(isBookableDate('2026-11-30', new Date('2026-11-24T12:00:00+05:30')), false);
+assert.strictEqual(isBookableDate('2026-11-27', new Date('2026-11-26T12:00:00+05:30')), true);
+assert.strictEqual(isBookableDate('2026-11-28', new Date('2026-11-26T12:00:00+05:30')), true);
+assert.strictEqual(isBookableDate('2026-11-30', new Date('2026-11-26T12:00:00+05:30')), true);
+// 2026-11-29 is a Sunday — must NOT be bookable
+assert.strictEqual(isBookableDate('2026-11-29', new Date('2026-11-26T12:00:00+05:30')), false, 'Sunday must not be bookable');
+assert.strictEqual(isBookableDate('2026-11-26', new Date('2026-11-26T12:00:00+05:30')), false);
+assert.strictEqual(isBookableDate('2026-12-01', new Date('2026-11-26T12:00:00+05:30')), false);
 
 function formatLocalDate(date) {
   return [
@@ -151,7 +156,7 @@ async function verifyAll() {
     assert.strictEqual(doctor.consultationTime, 60);
     assert.strictEqual(typeof doctor.isAvailable, 'boolean');
     assert.strictEqual(typeof doctor.unavailabilityReason, 'string');
-    assert.strictEqual(doctor.availableSlots.length, 6);
+    assert.strictEqual(doctor.availableSlots.length, 7);
     assert(doctor.availableSlots.every(day => day.sessions.length === 2));
     assert.notStrictEqual(doctor.password, 'doctor123');
   });
@@ -231,7 +236,6 @@ async function verifyAll() {
   let todayStr = '';
   for (const candidateKey of getBookingWindow().dates) {
     const candidate = new Date(`${candidateKey}T12:00:00`);
-    if (candidate.getDay() === 0) continue;
     const { start, end } = getDayRange(candidateKey);
     const [primaryCount, secondaryCount] = await Promise.all([
       getDoctorCol(targetDoctor._id, 'appointments').countDocuments({
