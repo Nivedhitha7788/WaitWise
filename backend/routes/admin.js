@@ -244,6 +244,11 @@ router.post('/special-appointments', requireAdmin(), async (req, res) => {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
       return res.status(400).json({ success: false, message: 'Date must use YYYY-MM-DD format.' });
     }
+    const todayKey = getClinicDateKey();
+    if (date !== todayKey) {
+      return res.status(400).json({ success: false, message: 'Special case walk-ins can only be allocated for the present date.' });
+    }
+
     if (!SPECIAL_CASE_SLOTS.includes(slot)) {
       return res.status(400).json({ success: false, message: 'Special cases may only use 17:00 - 18:00 or 18:00 - 19:00.' });
     }
@@ -295,8 +300,8 @@ router.post('/special-appointments', requireAdmin(), async (req, res) => {
       session: 'SP',
       slot,
       tokenNumber,
-      status: 'waiting',
-      queuePosition: 1,
+      status: 'scheduled',
+      queuePosition: null,
       consultationDurationMinutes: Number(assignedDoctor.consultationTime) || CONSULTATION_MINUTES,
       estimatedWaitTime: 0,
       bookedAt: new Date(),
@@ -383,7 +388,7 @@ router.get('/appointments', requireAdmin(), async (req, res) => {
 router.patch('/appointments/:id/status', requireAdmin(), async (req, res) => {
   try {
     const { status, notes } = req.body || {};
-    const validStatuses = ['waiting', 'in-consultation', 'completed', 'cancelled'];
+    const validStatuses = ['scheduled', 'waiting', 'in-consultation', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid appointment status.' });
     }

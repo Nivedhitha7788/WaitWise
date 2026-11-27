@@ -465,7 +465,7 @@ router.post('/book', requirePatient(), async (req, res) => {
     const existing = await appointments.findOne({
       patientId: String(req.user.id),
       doctorId: docIdStr,
-      status: { $in: ['waiting', 'in-consultation'] }
+      status: { $in: ['scheduled', 'waiting', 'in-consultation'] }
     });
     if (existing) {
       return res.status(409).json({
@@ -505,24 +505,23 @@ router.post('/book', requirePatient(), async (req, res) => {
       session: matchingSession.code,
       slot,
       tokenNumber,
-      status: 'waiting',
-      queuePosition,
+      status: 'scheduled',
+      queuePosition: null,
       consultationDurationMinutes,
       bookedAt: new Date(),
       consultationStartedAt: null,
       completedAt: null,
       notes: ''
     });
-    await recalculateQueue(docIdStr, appointmentDate);
     res.status(201).json({
       success: true,
-      message: 'Token generated successfully!',
+      message: 'Token generated successfully! Visit on your appointment day and click "Join Queue" to enter the live queue.',
       appointment: {
         _id: result.insertedId,
         tokenNumber,
         session: matchingSession.code,
         slot,
-        queuePosition,
+        status: 'scheduled',
         doctorName: doctor.name,
         specialization: doctor.specialization
       }
@@ -530,6 +529,48 @@ router.post('/book', requirePatient(), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error booking appointment.' });
+  }
+});
+
+// POST /api/patient/appointments/:id/join-queue — patient joins live queue on appointment day
+router.post('/appointments/:id/join-queue', requirePatient(), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const apt = await findAppointmentAcrossDoctors(id, { patientId: String(req.user.id) });
+    if (!apt) return res.status(404).json({ success: false, message: 'Appointment not found.' });
+
+    if (apt.status !== 'scheduled') {
+      return res.status(400).json({ success: false, message: 'Only scheduled appointments can join the queue.' });
+    }
+
+    const todayKey = getClinicDateKey();
+    const aptKey = getClinicDateKey(new Date(apt.appointmentDate));
+    if (aptKey !== todayKey) {
+      return res.status(400).json({ success: false, message: 'You can only join the queue on your appointment day.' });
+    }
+
+    const appointments = getDoctorCol(apt.doctorId, 'appointments');
+    const { start, end } = getDayRange(apt.appointmentDate);
+
+    // Calculate queue position among currently waiting patients
+    const waitingAhead = await appointments.countDocuments({
+      doctorId: String(apt.doctorId),
+      appointmentDate: { $gte: start, $lte: end },
+      status: 'waiting',
+      tokenNumber: { $lt: apt.tokenNumber }
+    });
+    const queuePosition = waitingAhead + 1;
+
+    await appointments.updateOne(
+      { _id: apt._id },
+      { $set: { status: 'waiting', queuePosition, joinedQueueAt: new Date() } }
+    );
+    await recalculateQueue(apt.doctorId, apt.appointmentDate);
+
+    res.json({ success: true, message: 'You have joined the queue!', queuePosition, appointmentId: id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error joining queue.' });
   }
 });
 

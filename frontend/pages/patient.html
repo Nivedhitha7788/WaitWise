@@ -712,9 +712,10 @@
 
     function patientDisplayStatus(status, appointmentDate) {
       if (!appointmentDate) return status;
-      return clinicDateKey(new Date(appointmentDate)) > clinicDateKey() && status !== 'cancelled'
-        ? 'waiting'
-        : status;
+      if (status === 'cancelled') return 'cancelled';
+      if (status === 'completed') return 'completed';
+      if (status === 'scheduled') return 'scheduled';
+      return status;
     }
 
     async function loadMyAppointments() {
@@ -736,6 +737,8 @@
         wrap.innerHTML = appointments.map(a => {
           const doc = a.doctor || {};
           const isActive = a.status === 'waiting' || a.status === 'in-consultation';
+          const isScheduledToday = a.status === 'scheduled' && isAppointmentToday(a.appointmentDate);
+          const isCancellable = a.status === 'waiting' || a.status === 'scheduled';
           return `
             <div class="card" style="margin-bottom:18px;">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
@@ -752,8 +755,9 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                   ${statusBadge(patientDisplayStatus(a.status, a.appointmentDate), a.appointmentDate)}
+                  ${isScheduledToday ? `<button class="btn btn-orange btn-sm" onclick="joinQueue('${a._id}')" style="font-weight:700;">🚶 Join Queue</button>` : ''}
                   ${isActive ? `<button class="btn btn-outline-orange btn-sm" onclick="openTracker('${a._id}')" style="font-weight:700;">🔍 Track Live Queue</button>` : ''}
-                  ${a.status === 'waiting' ? `<button class="btn btn-sm btn-danger" onclick="cancelApt('${a._id}')">✕ Cancel</button>` : ''}
+                  ${isCancellable ? `<button class="btn btn-sm btn-danger" onclick="cancelApt('${a._id}')">✕ Cancel</button>` : ''}
                 </div>
               </div>
               ${a.status === 'waiting' ? `
@@ -831,8 +835,51 @@
       }
     }
 
-    function openTracker(aptId) {
-      currentTrackingId = aptId;
+    async function joinQueue(aptId) {
+      try {
+        const res = await api('POST', `/api/patient/appointments/${aptId}/join-queue`);
+        const queuePos = res.queuePosition || 1;
+
+        // Prompt / fire browser notification
+        try {
+          if ('Notification' in window) {
+            if (Notification.permission === 'granted') {
+              new Notification('WaitWise — You Joined the Queue!', {
+                body: `You are #${queuePos} in the queue. Track your progress in the Live Waiting Board.`,
+                icon: '/favicon.ico'
+              });
+            } else if (Notification.permission !== 'denied') {
+              const perm = await Notification.requestPermission();
+              if (perm === 'granted') {
+                new Notification('WaitWise — You Joined the Queue!', {
+                  body: `You are #${queuePos} in the queue. Track your progress in the Live Waiting Board.`,
+                  icon: '/favicon.ico'
+                });
+              }
+            }
+          }
+        } catch (notifErr) {
+          console.warn('Notification prompt skipped or blocked:', notifErr);
+        }
+
+        // Reload patient appointments
+        await loadMyAppointments();
+
+        // Open live queue tracker modal for real-time progress
+        openTracker(aptId);
+
+        // Also offer to open or open the Live Waiting Board tab
+        try {
+          window.open('/pages/display.html', '_blank');
+        } catch (e) {
+          console.warn('Popup blocked for display.html:', e);
+        }
+      } catch (err) {
+        alert(I18n.t(err.message || 'Failed to join queue. Please try again.'));
+      }
+    }
+
+    function openTracker(aptId) {      currentTrackingId = aptId;
       $('#tokenModal').classList.remove('hidden');
       fetchTokenStatus();
       startCountdown();

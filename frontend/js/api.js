@@ -949,7 +949,7 @@ function statusBadge(status, appointmentDate) {
 
   const map = {
     waiting: 'waiting',
-    scheduled: 'waiting',
+    scheduled: 'scheduled',
     'in-consultation': 'in-consultation',
     completed: 'completed',
     cancelled: 'cancelled'

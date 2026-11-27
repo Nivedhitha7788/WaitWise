@@ -671,6 +671,11 @@ tr:hover td {
   color: var(--accent-orange);
   border: 1px solid var(--accent-orange);
 }
+.badge-scheduled {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.5);
+}
 .badge-in-consultation {
   background: rgba(56, 189, 248, 0.15);
   color: #38bdf8;

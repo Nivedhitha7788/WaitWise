@@ -182,8 +182,9 @@
                 <input class="form-input" type="tel" id="specialPhone" maxlength="40" />
               </div>
               <div class="form-group">
-                <label class="form-label" for="specialDate">Date <span class="req">*</span></label>
-                <input class="form-input" type="date" id="specialDate" required />
+                <label class="form-label" for="specialDate">Consultation Date <span class="req">*</span></label>
+                <input class="form-input" type="date" id="specialDate" required readonly style="background:rgba(255,255,255,0.05);color:#94a3b8;cursor:not-allowed;" title="Special walk-in cases are accommodated for the present date only" />
+                <span style="font-size:11px;color:#94a3b8;margin-top:4px;display:block;">Fixed to present date (walk-in accommodation)</span>
               </div>
             </div>
             <div class="form-row">
@@ -568,6 +569,9 @@
                       <button type="button" class="btn btn-sm btn-danger" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="cancelled">No Show</button>
                     ` : a.status === 'in-consultation' ? `
                       <button type="button" class="btn btn-sm btn-success" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="completed">Complete</button>
+                    ` : a.status === 'scheduled' && isAppointmentToday(a.appointmentDate) ? `
+                      <button type="button" class="btn btn-sm btn-outline-orange" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="waiting">Admit to Queue</button>
+                      <button type="button" class="btn btn-sm btn-danger" data-appointment-id="${escapeHTML(a._id)}" data-appointment-status="cancelled">Cancel</button>
                     ` : '—'}
                   </td>
                 </tr>
@@ -627,9 +631,13 @@
     $('#aptRefreshBtn').onclick = loadAppointments;
 
     const specialDate = $('#specialDate');
-    const localToday = new Date();
-    localToday.setMinutes(localToday.getMinutes() - localToday.getTimezoneOffset());
-    specialDate.value = localToday.toISOString().slice(0, 10);
+    const todayDateStr = clinicDateKey();
+    if (specialDate) {
+      specialDate.value = todayDateStr;
+      specialDate.min = todayDateStr;
+      specialDate.max = todayDateStr;
+      specialDate.readOnly = true;
+    }
 
     $('#specialCaseForm').onsubmit = async (event) => {
       event.preventDefault();
@@ -640,14 +648,17 @@
         const result = await api('POST', '/api/admin/special-appointments', {
           patientName: $('#specialName').value,
           phone: $('#specialPhone').value,
-          date: specialDate.value,
+          date: clinicDateKey(),
           slot: $('#specialSlot').value,
           reason: $('#specialReason').value
         });
         showAlert($('#specialCaseAlert'), 'success',
           `${result.message} Patient: ${result.appointment.patientName}, Token #${result.appointment.tokenNumber}.`);
         $('#specialCaseForm').reset();
-        specialDate.value = localToday.toISOString().slice(0, 10);
+        specialDate.value = clinicDateKey();
+        specialDate.min = clinicDateKey();
+        specialDate.max = clinicDateKey();
+        specialDate.readOnly = true;
         await Promise.all([loadAppointments(), loadStats(), loadDoctors()]);
       } catch (err) {
         showAlert($('#specialCaseAlert'), 'error', err.message || 'Failed to allocate special-case appointment.');
@@ -857,10 +868,7 @@
 
     if (specialDate) {
       specialDate.onchange = (e) => {
-        if (isSundayDate(e.target.value)) {
-          alert('Sundays are clinic holidays. Auto-advancing special case appointment to Monday.');
-          e.target.value = getNextWorkingDay(e.target.value);
-        }
+        e.target.value = clinicDateKey();
       };
     }
 

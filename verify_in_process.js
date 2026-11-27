@@ -404,7 +404,7 @@ async function verifyAll() {
   assert.strictEqual(Object.prototype.hasOwnProperty.call(savedAppointment, 'estimatedWaitTime'), false);
   assert.strictEqual(await getCol('appointments').countDocuments({ _id: savedAppointment._id }), 0);
   assert.strictEqual(savedAppointment.session, 'FN');
-  assert.strictEqual(savedAppointment.status, 'waiting');
+  assert.strictEqual(savedAppointment.status, 'scheduled');
   assert.strictEqual(savedAppointment.tokenNumber, bookRes.body.appointment.tokenNumber);
 
   let laterBooking = null;
